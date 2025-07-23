@@ -1,0 +1,75 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.sendWhatsAppMessage = void 0;
+const dotenv_1 = __importDefault(require("dotenv"));
+dotenv_1.default.config();
+const config = {
+    apiVersion: process.env.WHATSAPP_VERSION || "v22.0",
+    phoneNumberId: process.env.WHATSAPP_ID || "741850909002950",
+    accessToken: process.env.WHATSAPP_TOKEN || "EAAKhhtZApsEcBPPxUIXzlj2mIZAMOTZAHFE6sWU7mYrCdpdZADvM2daqOe9TjvrpN0eVZAZCPHFOkhuhmCGss7ehP16aEFbQgqSQnwBDUX9p6Rt1m2ZB44QLG21zXmlKwoFQsHCbO2B7b56WFB9a5V6WG0cvDYD1LqPh4wcK6VA6lOhQkUCy5UlrraLkmSBEAkJTnx7WVifreEJbZAuvatPSwpaxZBC60ptN6dzRZACYc3MSMOqRVuPh31cOf4ShS3RAZDZD", // <-- Don't forget to update this!
+};
+const sendWhatsAppMessage = async (phoneNumber, clientName, date, time, service) => {
+    const cleanedPhoneNumber = phoneNumber.replace(/[^\d]/g, "");
+    const { phoneNumberId, accessToken, apiVersion } = config;
+    if (!phoneNumberId || !accessToken || !apiVersion) {
+        throw new Error("WhatsApp Business API configuration is missing or invalid.");
+    }
+    const apiUrl = `https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`;
+    const requestBody = {
+        messaging_product: "whatsapp",
+        to: cleanedPhoneNumber,
+        recipient_type: "individual",
+        type: "template",
+        template: {
+            name: "lina_appointment2",
+            language: {
+                code: "ar",
+            },
+            components: [
+                {
+                    type: "header",
+                    parameters: [
+                        {
+                            type: "image",
+                            image: {
+                                link: "https://raw.githubusercontent.com/Ghazalsal/image/refs/heads/main/logo-lina.png"
+                            }
+                        }
+                    ]
+                },
+                {
+                    type: "body",
+                    parameters: [
+                        { type: "text", text: clientName },
+                        { type: "text", text: date },
+                        { type: "text", text: time },
+                        { type: "text", text: service },
+                    ]
+                }
+            ]
+        }
+    };
+    try {
+        const response = await fetch(apiUrl, {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(requestBody),
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error?.message || "Unknown error from WhatsApp API.");
+        }
+        return true;
+    }
+    catch (err) {
+        console.error("🚨 Failed to send WhatsApp message:", err);
+        return false;
+    }
+};
+exports.sendWhatsAppMessage = sendWhatsAppMessage;
