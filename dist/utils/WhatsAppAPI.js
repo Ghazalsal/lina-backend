@@ -1,17 +1,11 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendWhatsAppMessage = void 0;
-const dotenv_1 = __importDefault(require("dotenv"));
-dotenv_1.default.config();
+import dotenv from "dotenv";
+dotenv.config();
 const config = {
     apiVersion: process.env.WHATSAPP_VERSION || "v22.0",
     phoneNumberId: process.env.WHATSAPP_ID || "741850909002950",
     accessToken: process.env.WHATSAPP_TOKEN || "EAAKhhtZApsEcBPPxUIXzlj2mIZAMOTZAHFE6sWU7mYrCdpdZADvM2daqOe9TjvrpN0eVZAZCPHFOkhuhmCGss7ehP16aEFbQgqSQnwBDUX9p6Rt1m2ZB44QLG21zXmlKwoFQsHCbO2B7b56WFB9a5V6WG0cvDYD1LqPh4wcK6VA6lOhQkUCy5UlrraLkmSBEAkJTnx7WVifreEJbZAuvatPSwpaxZBC60ptN6dzRZACYc3MSMOqRVuPh31cOf4ShS3RAZDZD", // <-- Don't forget to update this!
 };
-const sendWhatsAppMessage = async (phoneNumber, clientName, date, time, service) => {
+export const sendWhatsAppMessage = async (phoneNumber, clientName, date, time, service) => {
     const cleanedPhoneNumber = phoneNumber.replace(/[^\d]/g, "");
     const { phoneNumberId, accessToken, apiVersion } = config;
     if (!phoneNumberId || !accessToken || !apiVersion) {
@@ -72,4 +66,3 @@ const sendWhatsAppMessage = async (phoneNumber, clientName, date, time, service)
         return false;
     }
 };
-exports.sendWhatsAppMessage = sendWhatsAppMessage;
