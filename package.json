@@ -10,6 +10,7 @@
     "dev": "ts-node-dev src/server.ts"
   },
   "dependencies": {
+    "typescript": "^5.4.5",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^4.21.2",
