@@ -1,0 +1,10 @@
+version: '3.8'
+services:
+  backend:
+    build: .
+    image: linabackend
+    ports:
+      - "4002:4002"
+    env_file:
+      - .env
+    restart: unless-stopped

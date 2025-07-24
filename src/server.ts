@@ -6,9 +6,11 @@ import asyncHandler from 'express-async-handler';
 import cron from 'node-cron';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 import { Appointment, AppointmentType } from './models/Appointment.js';
 import { sendWhatsAppMessage } from './utils/WhatsAppAPI.js';
 
+dotenv.config();
 
 const app = express();
 
@@ -29,8 +31,17 @@ app.get('/', (req: Request, res: Response) => {
   res.json({ message: 'Appointments API Server', status: 'running' });
 });
 
+const mongoUri = process.env.MONGODB_URI;
+
+if (!mongoUri) {
+  console.error("❌ Missing MONGODB_URI in environment");
+  process.exit(1);
+}
+
+console.log("Mongo URI:", mongoUri);
+
 mongoose
-  .connect('mongodb://localhost:27017/appointments')
+  .connect(mongoUri)
   .then(() => console.log('✅ Connected to MongoDB'))
   .catch((err) => console.error('❌ MongoDB connection error:', err));
 
@@ -376,13 +387,13 @@ const startServer = (port: number, maxRetries: number = 5) => {
 startServer(PORT);
 
 // --- ES Modules compatible __filename and __dirname support ---
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// const __filename = fileURLToPath(import.meta.url);
+// const __dirname = path.dirname(__filename);
 
 // Serve static frontend files
-app.use(express.static(path.join(__dirname, 'public')));
+// app.use(express.static(path.join(__dirname, 'public')));
 
-// Handle frontend routing (React/Vite SPA)
-app.get('*', (_req: Request, res: Response) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+// // Handle frontend routing (React/Vite SPA)
+// app.get('*', (_req: Request, res: Response) => {
+//   res.sendFile(path.join(__dirname, 'public', 'index.html'));
+// });
