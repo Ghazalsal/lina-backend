@@ -50,50 +50,33 @@ mongoose
     process.exit(1);
   });
 
-app.get(
-  '/api/appointments',
-  asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    try {
-      const { date } = req.query;
+app.get('/api/appointments', asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  const { date } = req.query;
 
-      if (!date || typeof date !== 'string') {
-        res.status(400).json({ error: 'Date parameter is required' });
-        return;
-      }
-
-      const [year, month, day] = date.split('-').map(Number);
-      if (
-        !year || !month || !day ||
-        isNaN(year) || isNaN(month) || isNaN(day)
-      ) {
-        res.status(400).json({ error: 'Invalid date format' });
-        return;
-      }
-
-      const startOfDay = new Date(year, month - 1, day, 0, 0, 0, 0);
-      const endOfDay = new Date(year, month - 1, day, 23, 59, 59, 999);
-
-      const appointments = await Appointment.find({
-        time: { $gte: startOfDay, $lte: endOfDay },
-      }).sort({ time: 1 });
-
-      const transformedAppointments = appointments.map((appointment) => ({
-        id: appointment._id.toString(),
-        name: appointment.name,
-        phone: appointment.phone,
-        type: appointment.type,
-        time: appointment.time.toISOString(),
-        notes: appointment.notes,
-      }));
-
-      res.json(transformedAppointments);
-    } catch (error) {
-      console.error('Error in GET /api/appointments:', error);
-      res.status(500).json({ error: 'Internal server error' });
-    }
-  })
-);
-
+  if (!date || typeof date !== 'string') {
+    res.status(400).json({ error: 'Date parameter is required' });
+    return;
+  }
+  
+  const [year, month, day] = date.split('-').map(Number);
+  const startOfDay = new Date(year, month - 1, day, 0, 0, 0, 0);
+  const endOfDay = new Date(year, month - 1, day, 23, 59, 59, 999);
+  
+  const appointments = await Appointment.find({ 
+    time: { $gte: startOfDay, $lte: endOfDay } 
+  }).sort({ time: 1 });
+  
+  const transformedAppointments = appointments.map(appointment => ({
+    id: appointment._id.toString(),
+    name: appointment.name,
+    phone: appointment.phone,
+    type: appointment.type,
+    time: appointment.time.toISOString(),
+    notes: appointment.notes
+  }));
+  
+  res.json(transformedAppointments);
+}));
 
 app.get(
   '/api/appointments/:id',
