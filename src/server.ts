@@ -13,16 +13,15 @@ import { sendWhatsAppMessage } from './utils/WhatsAppAPI.js';
 dotenv.config();
 
 const app = express();
-
-// Set up __dirname for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Middleware
 app.use(
   cors({
     origin: [
-      'https://lina-pure-nails.ps',  // your frontend deployed domain
-      'http://localhost:5173',        // optional for local dev
+      'https://lina-pure-nails.ps',
+      'http://localhost:5173',
       'http://127.0.0.1:5173',
       'http://localhost:5174',
       'http://127.0.0.1:5174',
@@ -30,45 +29,45 @@ app.use(
     credentials: true,
   })
 );
-
 app.use(express.json());
 
-// API status check
-app.get('/', (req: Request, res: Response) => {
+// Health check
+app.get('/', (_req, res) => {
   res.json({ message: 'Appointments API Server', status: 'running' });
 });
 
+// MongoDB connection
 const mongoUri = process.env.MONGODB_URI;
-
 if (!mongoUri) {
-  console.error("❌ Missing MONGODB_URI in environment");
+  console.error('❌ MONGODB_URI missing');
   process.exit(1);
 }
-
-console.log("Mongo URI:", mongoUri);
-
 mongoose
   .connect(mongoUri)
   .then(() => console.log('✅ Connected to MongoDB'))
-  .catch((err) => console.error('❌ MongoDB connection error:', err));
+  .catch((err) => {
+    console.error('❌ MongoDB connection error:', err);
+    process.exit(1);
+  });
 
+// GET /api/appointments?date=YYYY-MM-DD
 app.get(
   '/api/appointments',
   asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    const { date } = req.query;
+      const { date } = req.query;
 
-    if (!date || typeof date !== 'string') {
+      if (!date || typeof date !== 'string') {
       res.status(400).json({ error: 'Date parameter is required' });
-      return;
-    }
+        return;
+      }
 
-    const [year, month, day] = date.split('-').map(Number);
+      const [year, month, day] = date.split('-').map(Number);
     const startOfDay = new Date(year, month - 1, day, 0, 0, 0, 0);
     const endOfDay = new Date(year, month - 1, day, 23, 59, 59, 999);
 
-    const appointments = await Appointment.find({
-      time: { $gte: startOfDay, $lte: endOfDay },
-    }).sort({ time: 1 });
+      const appointments = await Appointment.find({
+        time: { $gte: startOfDay, $lte: endOfDay },
+      }).sort({ time: 1 });
 
     const transformedAppointments = appointments.map((appointment) => ({
       id: appointment._id.toString(),
@@ -167,8 +166,8 @@ app.post(
         notes: saved.notes,
       });
     } catch (error) {
-      console.error('Error creating appointment:', error);
-      res.status(500).json({ error: 'Failed to create appointment' });
+      console.error('❌ Error fetching appointments:', error);
+      res.status(500).json({ error: 'Failed to fetch appointments' });
     }
   })
 );
@@ -239,8 +238,8 @@ app.put(
         notes: updated.notes,
       });
     } catch (error) {
-      console.error('Error updating appointment:', error);
-      res.status(500).json({ error: 'Failed to update appointment' });
+      console.error('❌ Reminder sending error:', error);
+      res.status(500).json({ success: false, error: 'Failed to send reminders' });
     }
   })
 );
@@ -277,8 +276,8 @@ async function sendTomorrowAppointmentReminders() {
       "🔔 Running scheduled task: Sending reminders for tomorrow's appointments"
     );
 
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
 
     const year = tomorrow.getFullYear();
     const month = tomorrow.getMonth();
@@ -287,7 +286,7 @@ async function sendTomorrowAppointmentReminders() {
     const startOfDay = new Date(year, month, day, 0, 0, 0, 0);
     const endOfDay = new Date(year, month, day, 23, 59, 59, 999);
 
-    const appointments = await Appointment.find({
+  const appointments = await Appointment.find({
       time: { $gte: startOfDay, $lte: endOfDay },
     }).sort({ time: 1 });
 
@@ -365,7 +364,6 @@ app.post(
 // --- Serve React frontend static files ---
 // IMPORTANT: Place your React build folder contents here (e.g., dist or build) inside a folder named 'public_html' alongside this server file
 app.use(express.static(path.join(__dirname, 'public_html')));
-
 app.get('*', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public_html', 'index.html'));
 });
@@ -391,12 +389,11 @@ const startServer = (port: number, maxRetries: number = 5) => {
       server.close();
       startServer(port + 1, maxRetries - 1);
     } else {
-      console.error('❌ Server error:', err);
+      console.error('❌ Server startup error:', err);
       process.exit(1);
     }
   });
-
-  return server;
+  return server
 };
 
 startServer(PORT);
