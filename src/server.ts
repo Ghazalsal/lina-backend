@@ -59,8 +59,9 @@ app.get('/api/appointments', asyncHandler(async (req: Request, res: Response): P
   }
   
   const [year, month, day] = date.split('-').map(Number);
-  const startOfDay = new Date(year, month - 1, day, 0, 0, 0, 0);
-  const endOfDay = new Date(year, month - 1, day, 23, 59, 59, 999);
+  // Use UTC for date boundaries to avoid timezone shifts
+  const startOfDay = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
+  const endOfDay = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
   
   const appointments = await Appointment.find({ 
     time: { $gte: startOfDay, $lte: endOfDay } 
@@ -123,16 +124,16 @@ app.post(
 
         if (date) {
           const [year, month, day] = date.split('-').map(Number);
-          appointmentTime = new Date(year, month - 1, day, hours, minutes);
+          appointmentTime = new Date(Date.UTC(year, month - 1, day, hours, minutes));
         } else {
           const today = new Date();
-          appointmentTime = new Date(
+          appointmentTime = new Date(Date.UTC(
             today.getFullYear(),
             today.getMonth(),
             today.getDate(),
             hours,
             minutes
-          );
+          ));
         }
       } else {
         appointmentTime = new Date(time);
@@ -162,8 +163,8 @@ app.post(
         notes: saved.notes,
       });
     } catch (error) {
-      console.error('❌ Error fetching appointments:', error);
-      res.status(500).json({ error: 'Failed to fetch appointments' });
+      console.error('❌ Error saving appointment:', error);
+      res.status(500).json({ error: 'Failed to save appointment' });
     }
   })
 );
@@ -192,16 +193,16 @@ app.put(
 
           if (date) {
             const [year, month, day] = date.split('-').map(Number);
-            appointmentTime = new Date(year, month - 1, day, hours, minutes);
+            appointmentTime = new Date(Date.UTC(year, month - 1, day, hours, minutes));
           } else {
             const today = new Date();
-            appointmentTime = new Date(
+            appointmentTime = new Date(Date.UTC(
               today.getFullYear(),
               today.getMonth(),
               today.getDate(),
               hours,
               minutes
-            );
+            ));
           }
         } else {
           appointmentTime = new Date(time);
@@ -234,8 +235,8 @@ app.put(
         notes: updated.notes,
       });
     } catch (error) {
-      console.error('❌ Reminder sending error:', error);
-      res.status(500).json({ success: false, error: 'Failed to send reminders' });
+      console.error('❌ Update error:', error);
+      res.status(500).json({ success: false, error: 'Failed to update appointment' });
     }
   })
 );
@@ -272,17 +273,17 @@ async function sendTomorrowAppointmentReminders() {
       "🔔 Running scheduled task: Sending reminders for tomorrow's appointments"
     );
 
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const year = tomorrow.getFullYear();
-    const month = tomorrow.getMonth();
-    const day = tomorrow.getDate();
+    const year = tomorrow.getUTCFullYear();
+    const month = tomorrow.getUTCMonth();
+    const day = tomorrow.getUTCDate();
 
-    const startOfDay = new Date(year, month, day, 0, 0, 0, 0);
-    const endOfDay = new Date(year, month, day, 23, 59, 59, 999);
+    const startOfDay = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
+    const endOfDay = new Date(Date.UTC(year, month, day, 23, 59, 59, 999));
 
-  const appointments = await Appointment.find({
+    const appointments = await Appointment.find({
       time: { $gte: startOfDay, $lte: endOfDay },
     }).sort({ time: 1 });
 
@@ -309,8 +310,9 @@ async function sendTomorrowAppointmentReminders() {
           serviceInArabic = appointment.type;
       }
 
-      const hours = appointment.time.getHours().toString().padStart(2, '0');
-      const minutes = appointment.time.getMinutes().toString().padStart(2, '0');
+      // Get hours and minutes in the appointment's timezone (stored UTC)
+      const hours = appointment.time.getUTCHours().toString().padStart(2, '0');
+      const minutes = appointment.time.getUTCMinutes().toString().padStart(2, '0');
       const timeString = `${hours}:${minutes}`;
 
       const formattedDate = `${day.toString().padStart(2, '0')}/${(month + 1)
@@ -389,7 +391,7 @@ const startServer = (port: number, maxRetries: number = 5) => {
       process.exit(1);
     }
   });
-  return server
+  return server;
 };
 
 startServer(PORT);
