@@ -21,11 +21,11 @@ const __dirname = path.dirname(__filename);
 app.use(
   cors({
     origin: [
-      'http://localhost:5173',
+      'https://lina-pure-nails.ps',  // your frontend deployed domain
+      'http://localhost:5173',        // optional for local dev
       'http://127.0.0.1:5173',
       'http://localhost:5174',
       'http://127.0.0.1:5174',
-      'https://your-frontend-domain.com',  // Add your deployed frontend URL here!
     ],
     credentials: true,
   })
