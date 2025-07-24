@@ -14,6 +14,10 @@ dotenv.config();
 
 const app = express();
 
+// Set up __dirname for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 app.use(
   cors({
     origin: [
@@ -21,12 +25,15 @@ app.use(
       'http://127.0.0.1:5173',
       'http://localhost:5174',
       'http://127.0.0.1:5174',
+      'https://your-frontend-domain.com',  // Add your deployed frontend URL here!
     ],
     credentials: true,
   })
 );
+
 app.use(express.json());
 
+// API status check
 app.get('/', (req: Request, res: Response) => {
   res.json({ message: 'Appointments API Server', status: 'running' });
 });
@@ -45,305 +52,18 @@ mongoose
   .then(() => console.log('✅ Connected to MongoDB'))
   .catch((err) => console.error('❌ MongoDB connection error:', err));
 
-app.get(
-  '/api/appointments',
-  asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    const { date } = req.query;
+// --- Your API routes here (GET, POST, PUT, DELETE) ---
+// ... [keep all your existing API routes exactly as you have them] ...
 
-    if (!date || typeof date !== 'string') {
-      res.status(400).json({ error: 'Date parameter is required' });
-      return;
-    }
-
-    const [year, month, day] = date.split('-').map(Number);
-    const startOfDay = new Date(year, month - 1, day, 0, 0, 0, 0);
-    const endOfDay = new Date(year, month - 1, day, 23, 59, 59, 999);
-
-    const appointments = await Appointment.find({
-      time: { $gte: startOfDay, $lte: endOfDay },
-    }).sort({ time: 1 });
-
-    const transformedAppointments = appointments.map((appointment) => ({
-      id: appointment._id.toString(),
-      name: appointment.name,
-      phone: appointment.phone,
-      type: appointment.type,
-      time: appointment.time.toISOString(),
-      notes: appointment.notes,
-    }));
-
-    res.json(transformedAppointments);
-  })
-);
-
-app.get(
-  '/api/appointments/:id',
-  asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    const { id } = req.params;
-
-    if (!id) {
-      res.status(400).json({ error: 'Appointment ID is required' });
-      return;
-    }
-
-    const appointment = await Appointment.findById(id);
-
-    if (!appointment) {
-      res.status(404).json({ error: 'Appointment not found' });
-      return;
-    }
-
-    res.json({
-      id: appointment._id.toString(),
-      name: appointment.name,
-      phone: appointment.phone,
-      type: appointment.type,
-      time: appointment.time.toISOString(),
-      notes: appointment.notes,
-    });
-  })
-);
-
-app.post(
-  '/api/appointments',
-  asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    const { name, phone, type, time, notes, date } = req.body;
-
-    if (!name || !phone || !type || !time) {
-      res.status(400).json({ error: 'Missing required fields' });
-      return;
-    }
-
-    try {
-      let appointmentTime: Date;
-      if (/^\d{2}:\d{2}$/.test(time)) {
-        const [hours, minutes] = time.split(':').map(Number);
-
-        if (date) {
-          const [year, month, day] = date.split('-').map(Number);
-          appointmentTime = new Date(year, month - 1, day, hours, minutes);
-        } else {
-          const today = new Date();
-          appointmentTime = new Date(
-            today.getFullYear(),
-            today.getMonth(),
-            today.getDate(),
-            hours,
-            minutes
-          );
-        }
-      } else {
-        appointmentTime = new Date(time);
-      }
-
-      if (isNaN(appointmentTime.getTime())) {
-        res.status(400).json({ error: 'Invalid time format' });
-        return;
-      }
-
-      const appointment = new Appointment({
-        name,
-        phone,
-        type,
-        time: appointmentTime,
-        notes,
-      });
-
-      const saved = await appointment.save();
-
-      res.status(201).json({
-        id: saved._id.toString(),
-        name: saved.name,
-        phone: saved.phone,
-        type: saved.type,
-        time: saved.time.toISOString(),
-        notes: saved.notes,
-      });
-    } catch (error) {
-      console.error('Error creating appointment:', error);
-      res.status(500).json({ error: 'Failed to create appointment' });
-    }
-  })
-);
-
-app.put(
-  '/api/appointments/:id',
-  asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    const { id } = req.params;
-    const { name, phone, type, time, notes, date } = req.body;
-
-    if (!id) {
-      res.status(400).json({ error: 'Appointment ID is required' });
-      return;
-    }
-
-    try {
-      const update: any = {};
-      if (name !== undefined) update.name = name;
-      if (phone !== undefined) update.phone = phone;
-      if (type !== undefined) update.type = type;
-
-      if (time !== undefined) {
-        let appointmentTime: Date;
-        if (/^\d{2}:\d{2}$/.test(time)) {
-          const [hours, minutes] = time.split(':').map(Number);
-
-          if (date) {
-            const [year, month, day] = date.split('-').map(Number);
-            appointmentTime = new Date(year, month - 1, day, hours, minutes);
-          } else {
-            const today = new Date();
-            appointmentTime = new Date(
-              today.getFullYear(),
-              today.getMonth(),
-              today.getDate(),
-              hours,
-              minutes
-            );
-          }
-        } else {
-          appointmentTime = new Date(time);
-        }
-
-        if (isNaN(appointmentTime.getTime())) {
-          res.status(400).json({ error: 'Invalid time format' });
-          return;
-        }
-        update.time = appointmentTime;
-      }
-
-      if (notes !== undefined) update.notes = notes;
-
-      const updated = await Appointment.findByIdAndUpdate(id, update, {
-        new: true,
-      });
-
-      if (!updated) {
-        res.status(404).json({ error: 'Appointment not found' });
-        return;
-      }
-
-      res.json({
-        id: updated._id.toString(),
-        name: updated.name,
-        phone: updated.phone,
-        type: updated.type,
-        time: updated.time.toISOString(),
-        notes: updated.notes,
-      });
-    } catch (error) {
-      console.error('Error updating appointment:', error);
-      res.status(500).json({ error: 'Failed to update appointment' });
-    }
-  })
-);
-
-app.delete(
-  '/api/appointments/:id',
-  asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    const { id } = req.params;
-
-    if (!id) {
-      res.status(400).json({ error: 'Appointment ID is required' });
-      return;
-    }
-
-    const deleted = await Appointment.findByIdAndDelete(id);
-
-    if (!deleted) {
-      res.status(404).json({ error: 'Appointment not found' });
-      return;
-    }
-
-    res.json({ message: 'Appointment deleted', id });
-  })
-);
-
-app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  console.error('Server error:', err);
-  res.status(500).json({ error: 'Internal server error' });
-});
-
-const PORT = process.env.PORT ? parseInt(process.env.PORT) : 4002;
-
+// Scheduled job to send WhatsApp reminders
 async function sendTomorrowAppointmentReminders() {
-  try {
-    console.log(
-      "🔔 Running scheduled task: Sending reminders for tomorrow's appointments"
-    );
-
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
-    const year = tomorrow.getFullYear();
-    const month = tomorrow.getMonth();
-    const day = tomorrow.getDate();
-
-    const startOfDay = new Date(year, month, day, 0, 0, 0, 0);
-    const endOfDay = new Date(year, month, day, 23, 59, 59, 999);
-
-    const appointments = await Appointment.find({
-      time: { $gte: startOfDay, $lte: endOfDay },
-    }).sort({ time: 1 });
-
-    console.log(`Found ${appointments.length} appointments for tomorrow`);
-
-    for (const appointment of appointments) {
-      if (!appointment.phone || appointment.phone.trim() === '') {
-        console.log(`Skipping reminder for ${appointment.name} - No phone number`);
-        continue;
-      }
-
-      let serviceInArabic: string;
-      switch (appointment.type) {
-        case AppointmentType.Manicure:
-          serviceInArabic = 'مانيكير';
-          break;
-        case AppointmentType.Pedicure:
-          serviceInArabic = 'باديكير';
-          break;
-        case AppointmentType.Both:
-          serviceInArabic = 'مانيكير و باديكير';
-          break;
-        default:
-          serviceInArabic = appointment.type;
-      }
-
-      const hours = appointment.time.getHours().toString().padStart(2, '0');
-      const minutes = appointment.time.getMinutes().toString().padStart(2, '0');
-      const timeString = `${hours}:${minutes}`;
-
-      const formattedDate = `${day.toString().padStart(2, '0')}/${(month + 1)
-        .toString()
-        .padStart(2, '0')}/${year}`;
-
-      const success = await sendWhatsAppMessage(
-        appointment.phone,
-        appointment.name,
-        formattedDate,
-        timeString,
-        serviceInArabic
-      );
-
-      if (success) {
-        console.log(`✅ Reminder sent to ${appointment.name} (${appointment.phone})`);
-      } else {
-        console.error(`❌ Failed to send reminder to ${appointment.name} (${appointment.phone})`);
-      }
-      await new Promise((resolve) => setTimeout(resolve, 1000)); // avoid flooding
-    }
-
-    console.log("🏁 Finished sending reminders for tomorrow's appointments");
-  } catch (error) {
-    console.error('❌ Error sending reminders:', error);
-  }
+  // ... [keep your existing cron job code as-is] ...
 }
 
 cron.schedule('0 20 * * *', sendTomorrowAppointmentReminders, {
   timezone: 'Asia/Riyadh',
 });
 
-// API endpoint to manually trigger reminders
 app.post(
   '/api/send-tomorrow-reminders',
   asyncHandler(async (req: Request, res: Response): Promise<void> => {
@@ -356,6 +76,16 @@ app.post(
     }
   })
 );
+
+// --- Serve React frontend static files ---
+// IMPORTANT: Place your React build folder contents here (e.g., dist or build) inside a folder named 'public_html' alongside this server file
+app.use(express.static(path.join(__dirname, 'public_html')));
+
+app.get('*', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public_html', 'index.html'));
+});
+
+const PORT = process.env.PORT ? parseInt(process.env.PORT) : 4002;
 
 const startServer = (port: number, maxRetries: number = 5) => {
   if (maxRetries <= 0) {
@@ -385,15 +115,3 @@ const startServer = (port: number, maxRetries: number = 5) => {
 };
 
 startServer(PORT);
-
-// --- ES Modules compatible __filename and __dirname support ---
-// const __filename = fileURLToPath(import.meta.url);
-// const __dirname = path.dirname(__filename);
-
-// Serve static frontend files
-// app.use(express.static(path.join(__dirname, 'public')));
-
-// // Handle frontend routing (React/Vite SPA)
-// app.get('*', (_req: Request, res: Response) => {
-//   res.sendFile(path.join(__dirname, 'public', 'index.html'));
-// });
