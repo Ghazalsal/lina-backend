@@ -6,11 +6,17 @@ import asyncHandler from 'express-async-handler';
 import cron from 'node-cron';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 import { Appointment, AppointmentType } from './models/Appointment.js';
 import { sendWhatsAppMessage } from './utils/WhatsAppAPI.js';
+dotenv.config();
 const app = express();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+// Middleware
 app.use(cors({
     origin: [
+        'https://lina-pure-nails.ps',
         'http://localhost:5173',
         'http://127.0.0.1:5173',
         'http://localhost:5174',
@@ -19,13 +25,23 @@ app.use(cors({
     credentials: true,
 }));
 app.use(express.json());
-app.get('/', (req, res) => {
+// Health check
+app.get('/', (_req, res) => {
     res.json({ message: 'Appointments API Server', status: 'running' });
 });
+// MongoDB connection
+const mongoUri = process.env.MONGODB_URI;
+if (!mongoUri) {
+    console.error('❌ MONGODB_URI missing');
+    process.exit(1);
+}
 mongoose
-    .connect('mongodb://localhost:27017/appointments')
+    .connect(mongoUri)
     .then(() => console.log('✅ Connected to MongoDB'))
-    .catch((err) => console.error('❌ MongoDB connection error:', err));
+    .catch((err) => {
+    console.error('❌ MongoDB connection error:', err);
+    process.exit(1);
+});
 app.get('/api/appointments', asyncHandler(async (req, res) => {
     const { date } = req.query;
     if (!date || typeof date !== 'string') {
@@ -36,15 +52,15 @@ app.get('/api/appointments', asyncHandler(async (req, res) => {
     const startOfDay = new Date(year, month - 1, day, 0, 0, 0, 0);
     const endOfDay = new Date(year, month - 1, day, 23, 59, 59, 999);
     const appointments = await Appointment.find({
-        time: { $gte: startOfDay, $lte: endOfDay },
+        time: { $gte: startOfDay, $lte: endOfDay }
     }).sort({ time: 1 });
-    const transformedAppointments = appointments.map((appointment) => ({
+    const transformedAppointments = appointments.map(appointment => ({
         id: appointment._id.toString(),
         name: appointment.name,
         phone: appointment.phone,
         type: appointment.type,
         time: appointment.time.toISOString(),
-        notes: appointment.notes,
+        notes: appointment.notes
     }));
     res.json(transformedAppointments);
 }));
@@ -112,8 +128,8 @@ app.post('/api/appointments', asyncHandler(async (req, res) => {
         });
     }
     catch (error) {
-        console.error('Error creating appointment:', error);
-        res.status(500).json({ error: 'Failed to create appointment' });
+        console.error('❌ Error fetching appointments:', error);
+        res.status(500).json({ error: 'Failed to fetch appointments' });
     }
 }));
 app.put('/api/appointments/:id', asyncHandler(async (req, res) => {
@@ -172,8 +188,8 @@ app.put('/api/appointments/:id', asyncHandler(async (req, res) => {
         });
     }
     catch (error) {
-        console.error('Error updating appointment:', error);
-        res.status(500).json({ error: 'Failed to update appointment' });
+        console.error('❌ Reminder sending error:', error);
+        res.status(500).json({ success: false, error: 'Failed to send reminders' });
     }
 }));
 app.delete('/api/appointments/:id', asyncHandler(async (req, res) => {
@@ -193,7 +209,6 @@ app.use((err, req, res, next) => {
     console.error('Server error:', err);
     res.status(500).json({ error: 'Internal server error' });
 });
-const PORT = process.env.PORT ? parseInt(process.env.PORT) : 4002;
 async function sendTomorrowAppointmentReminders() {
     try {
         console.log("🔔 Running scheduled task: Sending reminders for tomorrow's appointments");
@@ -262,6 +277,13 @@ app.post('/api/send-tomorrow-reminders', asyncHandler(async (req, res) => {
         res.status(500).json({ success: false, error: 'Failed to send reminders' });
     }
 }));
+// --- Serve React frontend static files ---
+// IMPORTANT: Place your React build folder contents here (e.g., dist or build) inside a folder named 'public_html' alongside this server file
+app.use(express.static(path.join(__dirname, 'public_html')));
+app.get('*', (_req, res) => {
+    res.sendFile(path.join(__dirname, 'public_html', 'index.html'));
+});
+const PORT = process.env.PORT ? parseInt(process.env.PORT) : 4002;
 const startServer = (port, maxRetries = 5) => {
     if (maxRetries <= 0) {
         console.error('❌ Could not find an available port');
@@ -278,19 +300,10 @@ const startServer = (port, maxRetries = 5) => {
             startServer(port + 1, maxRetries - 1);
         }
         else {
-            console.error('❌ Server error:', err);
+            console.error('❌ Server startup error:', err);
             process.exit(1);
         }
     });
     return server;
 };
 startServer(PORT);
-// --- ES Modules compatible __filename and __dirname support ---
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-// Serve static frontend files
-app.use(express.static(path.join(__dirname, 'public')));
-// Handle frontend routing (React/Vite SPA)
-app.get('*', (_req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
