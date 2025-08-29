@@ -1,14 +1,15 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import express, { Request, Response, NextFunction } from 'express';
-import cors from 'cors';
-import mongoose from 'mongoose';
-import asyncHandler from 'express-async-handler';
-import cron from 'node-cron';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import dotenv from 'dotenv';
-import { Appointment, AppointmentType } from './models/Appointment.js';
-import { sendWhatsAppMessage } from './utils/WhatsAppAPI.js';
+import express, { Request, Response, NextFunction } from "express";
+import cors from "cors";
+import mongoose from "mongoose";
+import asyncHandler from "express-async-handler";
+import path from "path";
+import { fileURLToPath } from "url";
+import dotenv from "dotenv";
+import { createWriteStream } from "fs";
+
+import { Appointment, AppointmentType, ServiceDurations } from "./models/Appointment.js";
+import { IUser, User } from "./models/User.js";
+import { sendWhatsAppMessage } from "./utils/WhatsAppAPI.js";
 
 dotenv.config();
 
@@ -16,382 +17,528 @@ const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Middleware
+// Logging to file (optional)
+createWriteStream(path.join(__dirname, "access.log"), { flags: "a" });
+
+// CORS
 app.use(
   cors({
     origin: [
-      'https://lina-pure-nails.ps',
-      'http://localhost:5173',
-      'http://127.0.0.1:5173',
-      'http://localhost:5174',
-      'http://127.0.0.1:5174',
+      "https://lina-pure-nails.ps",
+      "http://localhost:5173",
+      "http://127.0.0.1:5173",
+      "http://localhost:5174",
+      "http://127.0.0.1:5174",
     ],
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
-app.use(express.json());
+
+// JSON body parser with validation
+app.use(
+  express.json({
+    limit: "10mb",
+    verify: (_req, _res, buf) => {
+      try {
+        JSON.parse(buf.toString() || "{}");
+      } catch {
+        throw new Error("Invalid JSON");
+      }
+    },
+  })
+);
+
+// Request logger
+app.use((req: Request, _res: Response, next: NextFunction) => {
+  console.log(
+    `\n--- NEW REQUEST ---\n${new Date().toISOString()} ${req.method} ${req.path}`
+  );
+  console.log("Headers:", req.headers);
+  console.log("Body:", req.body);
+  next();
+});
+
+// In your server.js or route file
+app.post(
+  "/api/appointments/:id/send-whatsapp",
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.params;
+    const { lang = "en" } = req.body; // Get language from request
+
+    const appointment = await Appointment.findById(id).populate("userId");
+    if (!appointment) {
+      res.status(404).json({ success: false, message: "Appointment not found" });
+      return;
+    }
+
+    const user = appointment.userId as IUser;
+    if (!user?.phone) {
+      res.status(400).json({ success: false, message: "User has no phone number" });
+      return;
+    }
+
+    // Format date and time based on language
+    let date, timeStr;
+    if (lang === "ar") {
+      // Arabic formatting
+      date = appointment.time.toLocaleDateString("ar-EG");
+      timeStr = appointment.time.toLocaleTimeString("ar-EG", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } else {
+      // Default to English
+      date = appointment.time.toLocaleDateString("en-GB");
+      timeStr = appointment.time.toLocaleTimeString("en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+
+    // Translate service type if needed
+    let service = appointment.type as any;
+    if (lang === "ar") {
+      // Add Arabic translations for service types
+      const serviceTranslations = {
+        [AppointmentType.Manicure]: "مانيكير",
+        [AppointmentType.Pedicure]: "بيديكير",
+        [AppointmentType.BothBasic]: "مانيكير و باديكير أساسي",
+        [AppointmentType.BothFull]: "مانيكير و باديكير كامل",
+        [AppointmentType.Eyebrows]: "حواجب",
+        [AppointmentType.Lashes]: "رموش",
+      };
+      service = serviceTranslations[appointment.type] || service;
+    }
+
+    const sent = await sendWhatsAppMessage(
+      user.phone,
+      user.name,
+      date,
+      timeStr,
+      service,
+      lang
+    );
+
+    if (sent) {
+      res.json({ success: true, message: "WhatsApp reminder sent successfully" });
+    } else {
+      res.status(500).json({ success: false, message: "Failed to send WhatsApp reminder" });
+    }
+  })
+);
+
 
 // Health check
-app.get('/', (_req, res) => {
-  res.json({ message: 'Appointments API Server', status: 'running' });
+app.get("/", (_req, res) => {
+  res.json({
+    message: "Appointments API Server",
+    status: "running",
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+    database: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
+  });
 });
 
 // MongoDB connection
 const mongoUri = process.env.MONGODB_URI;
 if (!mongoUri) {
-  console.error('❌ MONGODB_URI missing');
+  console.error("❌ MONGODB_URI missing");
   process.exit(1);
 }
+
+mongoose.connection.on("connecting", () => console.log("🔄 Connecting to MongoDB..."));
+mongoose.connection.on("connected", () => console.log("✅ Connected to MongoDB"));
+mongoose.connection.on("error", (err) => console.error("❌ MongoDB connection error:", err));
+mongoose.connection.on("disconnected", () => console.log("⚠️ MongoDB disconnected"));
+
 mongoose
-  .connect(mongoUri)
-  .then(() => console.log('✅ Connected to MongoDB'))
+  .connect(mongoUri, { connectTimeoutMS: 5000, socketTimeoutMS: 30000 })
   .catch((err) => {
-    console.error('❌ MongoDB connection error:', err);
+    console.error("❌ MongoDB connection failed:", err);
     process.exit(1);
   });
 
-app.get('/api/appointments', asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const { date } = req.query;
+/* ========================= USERS ========================= */
 
-  if (!date || typeof date !== 'string') {
-    res.status(400).json({ error: 'Date parameter is required' });
-    return;
-  }
-  
-  const [year, month, day] = date.split('-').map(Number);
-  // Use UTC for date boundaries to avoid timezone shifts
-  const startOfDay = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0));
-  const endOfDay = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
-  
-  const appointments = await Appointment.find({ 
-    time: { $gte: startOfDay, $lte: endOfDay } 
-  }).sort({ time: 1 });
-  
-  const transformedAppointments = appointments.map(appointment => ({
-    id: appointment._id.toString(),
-    name: appointment.name,
-    phone: appointment.phone,
-    type: appointment.type,
-    time: appointment.time.toISOString(),
-    notes: appointment.notes
-  }));
-  
-  res.json(transformedAppointments);
-}));
+// Create user
+app.post(
+  "/api/users",
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { name, phone } = req.body as { name?: string; phone?: string };
 
-app.get(
-  '/api/appointments/:id',
+    if (!name?.trim() || !phone?.trim()) {
+      res.status(400).json({ error: "Name and phone are required" });
+      return;
+    }
+
+    const existing = await User.findOne({ phone: phone.trim() }).lean();
+    if (existing) {
+      res.status(409).json({ error: "User with this phone already exists", user: existing });
+      return;
+    }
+
+    const user = new User({ name: name.trim(), phone: phone.trim(), appointments: [] });
+    await user.save();
+    res.status(201).json(user);
+  })
+);
+
+// Update user
+app.put(
+  "/api/users/:id",
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.params;
+    const { name, phone } = req.body as { name?: string; phone?: string };
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      res.status(400).json({ error: "Invalid user ID" });
+      return;
+    }
+    if (!name?.trim() || !phone?.trim()) {
+      res.status(400).json({ error: "Name and phone are required" });
+      return;
+    }
+
+    const updated = await User.findByIdAndUpdate(
+      id,
+      { name: name.trim(), phone: phone.trim() },
+      { new: true }
+    );
+    if (!updated) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    res.json(updated);
+  })
+);
+
+// Delete user (and cascade delete their appointments)
+app.delete(
+  "/api/users/:id",
   asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
 
-    if (!id) {
-      res.status(400).json({ error: 'Appointment ID is required' });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      res.status(400).json({ error: "Invalid user ID" });
       return;
     }
 
-    const appointment = await Appointment.findById(id);
-
-    if (!appointment) {
-      res.status(404).json({ error: 'Appointment not found' });
+    const user = await User.findById(id);
+    if (!user) {
+      res.status(404).json({ error: "User not found" });
       return;
     }
 
-    res.json({
-      id: appointment._id.toString(),
-      name: appointment.name,
-      phone: appointment.phone,
-      type: appointment.type,
-      time: appointment.time.toISOString(),
-      notes: appointment.notes,
+    // delete all appointments for this user
+    await Appointment.deleteMany({ userId: user._id });
+    await User.findByIdAndDelete(user._id);
+
+    res.json({ success: true, message: "User and their appointments deleted", id });
+  })
+);
+
+// Get all users
+app.get(
+  "/api/users",
+  asyncHandler(async (_req, res) => {
+    const users = await User.find().sort({ name: 1 });
+    res.json(users);
+  })
+);
+
+// Get single user by phone or id
+app.get(
+  "/api/users/search",
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { phone, id } = req.query as { phone?: string; id?: string };
+
+    let user: IUser | null = null;
+    if (phone) user = await User.findOne({ phone: String(phone).trim() });
+    else if (id) {
+      if (!mongoose.Types.ObjectId.isValid(String(id))) {
+        res.status(400).json({ error: "Invalid user ID" });
+        return;
+      }
+      user = await User.findById(String(id));
+    }
+
+    if (!user) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+    res.json(user);
+  })
+);
+
+/* ====================== APPOINTMENTS ====================== */
+
+// Create appointment
+app.post(
+  "/api/appointments",
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { userId, type, time, notes } = req.body as {
+      userId?: string;
+      type?: AppointmentType;
+      time?: string | Date;
+      notes?: string;
+    };
+
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      res.status(400).json({ error: "Valid userId is required" });
+      return;
+    }
+    if (!type || !Object.values(AppointmentType).includes(type)) {
+      res.status(400).json({ error: "Valid appointment type is required" });
+      return;
+    }
+    if (!time) {
+      res.status(400).json({ error: "Appointment time is required" });
+      return;
+    }
+    if (notes !== undefined && typeof notes !== "string") {
+      res.status(400).json({ error: "Notes must be a string" });
+      return;
+    }
+
+    const appointmentTime = new Date(time);
+    if (isNaN(appointmentTime.getTime())) {
+      res.status(400).json({ error: "Invalid date format" });
+      return;
+    }
+
+    const user = await User.findById(userId).lean();
+    if (!user) {
+      res.status(404).json({ error: "User not found" });
+      return;
+    }
+
+    const duration = ServiceDurations[type] ?? 45;
+    const endTime = new Date(appointmentTime.getTime() + duration * 60000);
+
+    const appointment = new Appointment({
+      userId,
+      type,
+      time: appointmentTime,
+      endTime,
+      duration,
+      notes: notes || "",
+    });
+
+    const saved = await appointment.save();
+
+    // Track on user doc
+    await User.updateOne({ _id: userId }, { $addToSet: { appointments: saved._id } });
+
+    res.status(201).json({
+      id: saved._id,
+      user: { id: userId, name: user.name, phone: user.phone },
+      type: saved.type,
+      time: saved.time,
+      endTime: saved.endTime,
+      duration: saved.duration,
+      notes: saved.notes,
     });
   })
 );
 
-app.post(
-  '/api/appointments',
-  asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    const { name, phone, type, time, notes, date } = req.body;
-
-    if (!name || !phone || !type || !time) {
-      res.status(400).json({ error: 'Missing required fields' });
-      return;
-    }
-
-    try {
-      let appointmentTime: Date;
-      if (/^\d{2}:\d{2}$/.test(time)) {
-        const [hours, minutes] = time.split(':').map(Number);
-
-        if (date) {
-          const [year, month, day] = date.split('-').map(Number);
-          appointmentTime = new Date(Date.UTC(year, month - 1, day, hours, minutes));
-        } else {
-          const today = new Date();
-          appointmentTime = new Date(Date.UTC(
-            today.getFullYear(),
-            today.getMonth(),
-            today.getDate(),
-            hours,
-            minutes
-          ));
-        }
-      } else {
-        appointmentTime = new Date(time);
-      }
-
-      if (isNaN(appointmentTime.getTime())) {
-        res.status(400).json({ error: 'Invalid time format' });
-        return;
-      }
-
-      const appointment = new Appointment({
-        name,
-        phone,
-        type,
-        time: appointmentTime,
-        notes,
-      });
-
-      const saved = await appointment.save();
-
-      res.status(201).json({
-        id: saved._id.toString(),
-        name: saved.name,
-        phone: saved.phone,
-        type: saved.type,
-        time: saved.time.toISOString(),
-        notes: saved.notes,
-      });
-    } catch (error) {
-      console.error('❌ Error saving appointment:', error);
-      res.status(500).json({ error: 'Failed to save appointment' });
-    }
-  })
-);
-
+// Update appointment
 app.put(
-  '/api/appointments/:id',
+  "/api/appointments/:id",
   asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
-    const { name, phone, type, time, notes, date } = req.body;
+    const { userId, type, time, notes } = req.body as {
+      userId?: string;
+      type?: AppointmentType;
+      time?: string | Date;
+      notes?: string;
+    };
 
-    if (!id) {
-      res.status(400).json({ error: 'Appointment ID is required' });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      res.status(400).json({ error: "Invalid appointment ID" });
       return;
     }
 
-    try {
-      const update: any = {};
-      if (name !== undefined) update.name = name;
-      if (phone !== undefined) update.phone = phone;
-      if (type !== undefined) update.type = type;
+    const appointment = await Appointment.findById(id);
+    if (!appointment) {
+      res.status(404).json({ error: "Appointment not found" });
+      return;
+    }
 
-      if (time !== undefined) {
-        let appointmentTime: Date;
-        if (/^\d{2}:\d{2}$/.test(time)) {
-          const [hours, minutes] = time.split(':').map(Number);
-
-          if (date) {
-            const [year, month, day] = date.split('-').map(Number);
-            appointmentTime = new Date(Date.UTC(year, month - 1, day, hours, minutes));
-          } else {
-            const today = new Date();
-            appointmentTime = new Date(Date.UTC(
-              today.getFullYear(),
-              today.getMonth(),
-              today.getDate(),
-              hours,
-              minutes
-            ));
-          }
-        } else {
-          appointmentTime = new Date(time);
-        }
-
-        if (isNaN(appointmentTime.getTime())) {
-          res.status(400).json({ error: 'Invalid time format' });
-          return;
-        }
-        update.time = appointmentTime;
-      }
-
-      if (notes !== undefined) update.notes = notes;
-
-      const updated = await Appointment.findByIdAndUpdate(id, update, {
-        new: true,
-      });
-
-      if (!updated) {
-        res.status(404).json({ error: 'Appointment not found' });
+    // If changing user, validate the new user
+    let newUser: IUser | null = null;
+    if (userId) {
+      if (!mongoose.Types.ObjectId.isValid(userId)) {
+        res.status(400).json({ error: "Valid userId is required" });
         return;
       }
-
-      res.json({
-        id: updated._id.toString(),
-        name: updated.name,
-        phone: updated.phone,
-        type: updated.type,
-        time: updated.time.toISOString(),
-        notes: updated.notes,
-      });
-    } catch (error) {
-      console.error('❌ Update error:', error);
-      res.status(500).json({ success: false, error: 'Failed to update appointment' });
+      newUser = await User.findById(userId);
+      if (!newUser) {
+        res.status(404).json({ error: "User not found" });
+        return;
+      }
     }
+
+    // Update type/duration
+    if (type) {
+      if (!Object.values(AppointmentType).includes(type)) {
+        res.status(400).json({ error: "Valid appointment type is required" });
+        return;
+      }
+      appointment.type = type;
+      appointment.duration = ServiceDurations[type] ?? appointment.duration;
+    }
+
+    // Update time/endTime
+    if (time) {
+      const newTime = new Date(time);
+      if (isNaN(newTime.getTime())) {
+        res.status(400).json({ error: "Invalid date format" });
+        return;
+      }
+      appointment.time = newTime;
+      appointment.endTime = new Date(newTime.getTime() + appointment.duration * 60000);
+    }
+
+    if (notes !== undefined) appointment.notes = notes;
+
+    // Handle user change: move appointment id between users
+    if (newUser && appointment.userId.toString() !== newUser._id.toString()) {
+      await User.updateOne(
+        { _id: appointment.userId },
+        { $pull: { appointments: appointment._id } }
+      );
+      await User.updateOne(
+        { _id: newUser._id },
+        { $addToSet: { appointments: appointment._id } }
+      );
+      appointment.userId = newUser._id;
+    }
+
+    const updated = await appointment.save();
+
+    const finalUser = newUser
+      ? { id: newUser._id, name: newUser.name, phone: newUser.phone }
+      : await (async () => {
+          const u = await User.findById(updated.userId).lean();
+          return u ? { id: u._id, name: u.name, phone: u.phone } : { id: updated.userId };
+        })();
+
+    res.json({
+      id: updated._id,
+      user: finalUser,
+      type: updated.type,
+      time: updated.time,
+      endTime: updated.endTime,
+      duration: updated.duration,
+      notes: updated.notes,
+    });
   })
 );
 
+// Delete appointment
 app.delete(
-  '/api/appointments/:id',
+  "/api/appointments/:id",
   asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { id } = req.params;
 
-    if (!id) {
-      res.status(400).json({ error: 'Appointment ID is required' });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      res.status(400).json({ error: "Invalid appointment ID" });
       return;
     }
 
     const deleted = await Appointment.findByIdAndDelete(id);
-
     if (!deleted) {
-      res.status(404).json({ error: 'Appointment not found' });
+      res.status(404).json({ error: "Appointment not found" });
       return;
     }
 
-    res.json({ message: 'Appointment deleted', id });
+    // Pull from user's appointments array
+    await User.updateOne({ _id: deleted.userId }, { $pull: { appointments: deleted._id } });
+
+    res.json({ message: "Appointment deleted", id: deleted._id });
   })
 );
 
-app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-  console.error('Server error:', err);
-  res.status(500).json({ error: 'Internal server error' });
-});
+// GET /api/appointments?date=yyyy-mm-dd
+app.get(
+  "/api/appointments",
+  asyncHandler(async (req: Request, res: Response): Promise<void> => {
+    const { date } = req.query as { date?: string };
 
-async function sendTomorrowAppointmentReminders() {
-  try {
-    console.log(
-      "🔔 Running scheduled task: Sending reminders for tomorrow's appointments"
-    );
+    if (!date || typeof date !== "string") {
+      res.status(400).json({ error: "Date query parameter is required" });
+      return;
+    }
 
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const startOfDay = new Date(date);
+    if (isNaN(startOfDay.getTime())) {
+      res.status(400).json({ error: "Invalid date" });
+      return;
+    }
+    startOfDay.setHours(0, 0, 0, 0);
 
-    const year = tomorrow.getUTCFullYear();
-    const month = tomorrow.getUTCMonth();
-    const day = tomorrow.getUTCDate();
-
-    const startOfDay = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
-    const endOfDay = new Date(Date.UTC(year, month, day, 23, 59, 59, 999));
+    const endOfDay = new Date(startOfDay);
+    endOfDay.setHours(23, 59, 59, 999);
 
     const appointments = await Appointment.find({
       time: { $gte: startOfDay, $lte: endOfDay },
-    }).sort({ time: 1 });
+    })
+      .populate("userId")
+      .sort({ time: 1 })
+      .lean();
 
-    console.log(`Found ${appointments.length} appointments for tomorrow`);
+    const formatted = appointments.map((apt) => ({
+      id: apt._id,
+      user: {
+        id: (apt.userId as any)?._id ?? apt.userId,
+        name: (apt.userId as any)?.name,
+        phone: (apt.userId as any)?.phone,
+      },
+      type: apt.type,
+      time: apt.time,
+      endTime: apt.endTime,
+      duration: apt.duration,
+      notes: apt.notes,
+    }));
 
-    for (const appointment of appointments) {
-      if (!appointment.phone || appointment.phone.trim() === '') {
-        console.log(`Skipping reminder for ${appointment.name} - No phone number`);
-        continue;
-      }
-
-      let serviceInArabic: string;
-      switch (appointment.type) {
-        case AppointmentType.Manicure:
-          serviceInArabic = 'مانيكير';
-          break;
-        case AppointmentType.Pedicure:
-          serviceInArabic = 'باديكير';
-          break;
-        case AppointmentType.Both:
-          serviceInArabic = 'مانيكير و باديكير';
-          break;
-        default:
-          serviceInArabic = appointment.type;
-      }
-
-      // Get hours and minutes in the appointment's timezone (stored UTC)
-      const hours = appointment.time.getUTCHours().toString().padStart(2, '0');
-      const minutes = appointment.time.getUTCMinutes().toString().padStart(2, '0');
-      const timeString = `${hours}:${minutes}`;
-
-      const formattedDate = `${day.toString().padStart(2, '0')}/${(month + 1)
-        .toString()
-        .padStart(2, '0')}/${year}`;
-
-      const success = await sendWhatsAppMessage(
-        appointment.phone,
-        appointment.name,
-        formattedDate,
-        timeString,
-        serviceInArabic
-      );
-
-      if (success) {
-        console.log(`✅ Reminder sent to ${appointment.name} (${appointment.phone})`);
-      } else {
-        console.error(`❌ Failed to send reminder to ${appointment.name} (${appointment.phone})`);
-      }
-      await new Promise((resolve) => setTimeout(resolve, 1000)); // avoid flooding
-    }
-
-    console.log("🏁 Finished sending reminders for tomorrow's appointments");
-  } catch (error) {
-    console.error('❌ Error sending reminders:', error);
-  }
-}
-
-cron.schedule('0 20 * * *', sendTomorrowAppointmentReminders, {
-  timezone: 'Asia/Riyadh',
-});
-
-// API endpoint to manually trigger reminders
-app.post(
-  '/api/send-tomorrow-reminders',
-  asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    try {
-      await sendTomorrowAppointmentReminders();
-      res.json({ success: true, message: "Reminders for tomorrow's appointments have been sent" });
-    } catch (error) {
-      console.error('Error sending reminders:', error);
-      res.status(500).json({ success: false, error: 'Failed to send reminders' });
-    }
+    res.json(formatted);
   })
 );
 
-// --- Serve React frontend static files ---
-// IMPORTANT: Place your React build folder contents here (e.g., dist or build) inside a folder named 'public_html' alongside this server file
-app.use(express.static(path.join(__dirname, 'public_html')));
-app.get('*', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'public_html', 'index.html'));
+/* ===================== ERROR HANDLER ===================== */
+app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+  console.error("--- ERROR ---", err.stack || err.message || err);
+  res.status(500).json({
+    error: "Internal Server Error",
+    message: err.message || "Something went wrong",
+    path: req.path,
+    timestamp: new Date().toISOString(),
+  });
 });
 
-const PORT = process.env.PORT ? parseInt(process.env.PORT) : 4002;
+/* ====================== START SERVER ===================== */
+const PORT = process.env.PORT || 4002;
+const server = app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
+});
 
-const startServer = (port: number, maxRetries: number = 5) => {
-  if (maxRetries <= 0) {
-    console.error('❌ Could not find an available port');
-    process.exit(1);
-  }
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
 
-  const server = app.listen(port, () => {
-    console.log(`🚀 Server is running on http://localhost:${port}`);
-    console.log(
-      "📅 Scheduled task: Reminders for tomorrow's appointments will be sent at 8:00 PM daily"
-    );
-  });
-
-  server.on('error', (err: Error & { code?: string }) => {
-    if (err?.code === 'EADDRINUSE') {
-      console.log(`❌ Port ${port} is busy, trying port ${port + 1}`);
-      server.close();
-      startServer(port + 1, maxRetries - 1);
-    } else {
-      console.error('❌ Server startup error:', err);
-      process.exit(1);
+function shutdown(signal: string) {
+  console.log(`Received ${signal}, shutting down...`);
+  server.close(async () => {
+    try {
+      await mongoose.disconnect();
+      console.log("MongoDB disconnected");
+    } catch (err) {
+      console.error("Error closing MongoDB:", err);
     }
+    process.exit(0);
   });
-  return server;
-};
-
-startServer(PORT);
+  setTimeout(() => process.exit(1), 10000);
+}
