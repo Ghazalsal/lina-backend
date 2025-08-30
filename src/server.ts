@@ -140,6 +140,7 @@ app.get("/", (_req, res) => {
     database: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
   });
 });
+console.log("MONGODB_URI:", process.env.MONGODB_URI);
 
 // MongoDB connection
 const mongoUri = process.env.MONGODB_URI;
