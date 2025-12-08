@@ -9,6 +9,7 @@ import { createWriteStream } from "fs";
 import { Appointment, AppointmentType, ServiceDurations } from "./models/Appointment.js";
 import { User } from "./models/User.js";
 import { sendWhatsAppMessage } from "./utils/WhatsAppAPI.js";
+import { scheduleWhatsAppReminders } from "./routes/appointments.js";
 dotenv.config();
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
@@ -62,27 +63,35 @@ app.post("/api/appointments/:id/send-whatsapp", asyncHandler(async (req, res) =>
         return;
     }
     // Format date and time based on language
-    let date, timeStr;
+    let date, timeStr, dayName;
     if (lang === "ar") {
-        // Arabic formatting
         date = appointment.time.toLocaleDateString("ar-EG");
         timeStr = appointment.time.toLocaleTimeString("ar-EG", {
             hour: "2-digit",
             minute: "2-digit",
         });
+        const daysArabic = [
+            "الأحد",
+            "الإثنين",
+            "الثلاثاء",
+            "الأربعاء",
+            "الخميس",
+            "الجمعة",
+            "السبت",
+        ];
+        dayName = daysArabic[appointment.time.getDay()];
     }
     else {
-        // Default to English
         date = appointment.time.toLocaleDateString("en-GB");
         timeStr = appointment.time.toLocaleTimeString("en-GB", {
             hour: "2-digit",
             minute: "2-digit",
         });
+        dayName = appointment.time.toLocaleDateString("en-US", { weekday: "long" });
     }
     // Translate service type if needed
     let service = appointment.type;
     if (lang === "ar") {
-        // Add Arabic translations for service types
         const serviceTranslations = {
             [AppointmentType.Manicure]: "مانيكير",
             [AppointmentType.Pedicure]: "بيديكير",
@@ -93,7 +102,7 @@ app.post("/api/appointments/:id/send-whatsapp", asyncHandler(async (req, res) =>
         };
         service = serviceTranslations[appointment.type] || service;
     }
-    const sent = await sendWhatsAppMessage(user.phone, user.name, date, timeStr, service, lang);
+    const sent = await sendWhatsAppMessage(user.phone, user.name, date, timeStr, service, dayName, lang);
     if (sent) {
         res.json({ success: true, message: "WhatsApp reminder sent successfully" });
     }
@@ -119,7 +128,11 @@ if (!mongoUri) {
     process.exit(1);
 }
 mongoose.connection.on("connecting", () => console.log("🔄 Connecting to MongoDB..."));
-mongoose.connection.on("connected", () => console.log("✅ Connected to MongoDB"));
+mongoose.connection.on("connected", () => {
+    console.log("✅ Connected to MongoDB");
+    // Start daily WhatsApp reminder scheduler once DB is connected
+    scheduleWhatsAppReminders();
+});
 mongoose.connection.on("error", (err) => console.error("❌ MongoDB connection error:", err));
 mongoose.connection.on("disconnected", () => console.log("⚠️ MongoDB disconnected"));
 mongoose

@@ -10,6 +10,7 @@ import { createWriteStream } from "fs";
 import { Appointment, AppointmentType, ServiceDurations } from "./models/Appointment.js";
 import { IUser, User } from "./models/User.js";
 import { sendWhatsAppMessage } from "./utils/WhatsAppAPI.js";
+import { scheduleWhatsAppReminders } from "./routes/appointments.js";
 
 dotenv.config();
 
@@ -80,27 +81,35 @@ app.post(
     }
 
     // Format date and time based on language
-    let date, timeStr;
+    let date, timeStr, dayName;
     if (lang === "ar") {
-      // Arabic formatting
       date = appointment.time.toLocaleDateString("ar-EG");
       timeStr = appointment.time.toLocaleTimeString("ar-EG", {
         hour: "2-digit",
         minute: "2-digit",
       });
+      const daysArabic = [
+        "الأحد",
+        "الإثنين",
+        "الثلاثاء",
+        "الأربعاء",
+        "الخميس",
+        "الجمعة",
+        "السبت",
+      ];
+      dayName = daysArabic[appointment.time.getDay()];
     } else {
-      // Default to English
       date = appointment.time.toLocaleDateString("en-GB");
       timeStr = appointment.time.toLocaleTimeString("en-GB", {
         hour: "2-digit",
         minute: "2-digit",
       });
+      dayName = appointment.time.toLocaleDateString("en-US", { weekday: "long" });
     }
 
     // Translate service type if needed
     let service = appointment.type as any;
     if (lang === "ar") {
-      // Add Arabic translations for service types
       const serviceTranslations = {
         [AppointmentType.Manicure]: "مانيكير",
         [AppointmentType.Pedicure]: "بيديكير",
@@ -118,6 +127,7 @@ app.post(
       date,
       timeStr,
       service,
+      dayName,
       lang
     );
 
@@ -150,7 +160,11 @@ if (!mongoUri) {
 }
 
 mongoose.connection.on("connecting", () => console.log("🔄 Connecting to MongoDB..."));
-mongoose.connection.on("connected", () => console.log("✅ Connected to MongoDB"));
+mongoose.connection.on("connected", () => {
+  console.log("✅ Connected to MongoDB");
+  // Start daily WhatsApp reminder scheduler once DB is connected
+  scheduleWhatsAppReminders();
+});
 mongoose.connection.on("error", (err) => console.error("❌ MongoDB connection error:", err));
 mongoose.connection.on("disconnected", () => console.log("⚠️ MongoDB disconnected"));
 
