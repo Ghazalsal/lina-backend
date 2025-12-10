@@ -1,87 +1,165 @@
 // utils/whatsappScheduler.ts
 import cron from "node-cron";
-import { Appointment } from "../models/Appointment.js";
+import { Appointment, AppointmentType } from "../models/Appointment.js";
 import { IUser } from "../models/User.js";
 import { sendWhatsAppMessage } from "../utils/WhatsAppAPI.js";
 
+function resolveTimezone(): string {
+  const candidates = [
+    process.env.DEFAULT_TIMEZONE,
+    "Asia/Gaza",
+    "Asia/Jerusalem",
+    "Europe/Athens",
+  ].filter(Boolean) as string[];
+  for (const tz of candidates) {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: tz }).format(new Date());
+      return tz;
+    } catch {}
+  }
+  return "UTC";
+}
+
+function getOffsetMinutes(): number {
+  const raw = (process.env.TZ_OFFSET_MINUTES || "").trim();
+  const n = Number(raw);
+  if (!isNaN(n) && isFinite(n)) return n;
+  // Default to +120 (UTC+2) which is winter offset for Gaza/Jerusalem
+  return 120;
+}
+
+function formatWithOffset(date: Date, lang: string) {
+  const offset = getOffsetMinutes();
+  const shifted = new Date(date.getTime() + offset * 60000);
+  const h = shifted.getUTCHours();
+  const m = shifted.getUTCMinutes();
+  const dd = shifted.getUTCDate();
+  const mm = shifted.getUTCMonth() + 1;
+  const yyyy = shifted.getUTCFullYear();
+  const weekdayIdx = shifted.getUTCDay();
+
+  // Time 12h
+  const isPM = h >= 12;
+  const h12 = h % 12 || 12;
+  const mmStr = m.toString().padStart(2, "0");
+  const timeStr = `${h12}:${mmStr} ${isPM ? "pm" : "am"}`;
+
+  // Date dd/mm/yyyy
+  const dateStr = `${dd.toString().padStart(2, "0")}/${mm.toString().padStart(2, "0")}/${yyyy}`;
+
+  // Weekday name (Arabic)
+  const daysArabic = [
+    "الأحد",
+    "الإثنين",
+    "الثلاثاء",
+    "الأربعاء",
+    "الخميس",
+    "الجمعة",
+    "السبت",
+  ];
+  const dayNameAr = daysArabic[weekdayIdx];
+
+  return { dateStr, timeStr, dayNameAr };
+}
+
 export function scheduleWhatsAppReminders() {
-  // Run daily at 8 PM
-  cron.schedule("0 20 * * *", async () => {
-    console.log("🕗 Running WhatsApp reminder scheduler...");
+  const tz = resolveTimezone();
+  const tzIsUTC = tz === "UTC";
 
-    const now = new Date();
-    const tomorrow = new Date(now);
-    tomorrow.setDate(now.getDate() + 1);
-    tomorrow.setHours(0, 0, 0, 0);
+  // Compute the cron hour: if timezone unavailable (UTC), convert local 20:00 to UTC hour using offset
+  const localTargetHour = 20; // 8 PM local target
+  const offsetHours = Math.floor(getOffsetMinutes() / 60);
+  const cronHour = tzIsUTC ? ((localTargetHour - offsetHours + 24) % 24) : localTargetHour;
+  const cronExpr = `0 ${cronHour} * * *`;
 
-    const tomorrowEnd = new Date(tomorrow);
-    tomorrowEnd.setHours(23, 59, 59, 999);
+  console.log("⚙️ Reminder scheduler config:", { timezone: tz, cronExpr, offsetMinutes: getOffsetMinutes() });
 
-    // Skip Sundays
-    if (tomorrow.getDay() === 0) {
-      console.log("⏩ Skipping Sunday reminders");
-      return;
-    }
+  // Schedule daily job
+  cron.schedule(
+    cronExpr,
+    async () => {
+      console.log("🕗 Running WhatsApp reminder scheduler...", { timezone: tz });
 
-    const appointments = await Appointment.find({
-      time: { $gte: tomorrow, $lte: tomorrowEnd },
-    })
-      .populate<{ userId: IUser }>("userId")
-      .exec();
+      const now = new Date();
+      const tomorrow = new Date(now);
+      tomorrow.setDate(now.getDate() + 1);
+      tomorrow.setHours(0, 0, 0, 0);
 
-    if (!appointments.length) {
-      console.log("No appointments for tomorrow.");
-      return;
-    }
+      const tomorrowEnd = new Date(tomorrow);
+      tomorrowEnd.setHours(23, 59, 59, 999);
 
-    const daysArabic = [
-      "الأحد",
-      "الإثنين",
-      "الثلاثاء",
-      "الأربعاء",
-      "الخميس",
-      "الجمعة",
-      "السبت",
-    ];
-
-    const serviceTranslations: Record<string, string> = {
-      MANICURE: "مانيكير",
-      PEDICURE: "بيديكير",
-      BOTH_BASIC: "مانيكير و باديكير أساسي",
-      BOTH_FULL: "مانيكير و باديكير كامل",
-      EYEBROWS: "حواجب",
-      LASHES: "رموش",
-    };
-
-    for (const appt of appointments) {
-      const user = appt.userId;
-      if (!user?.phone) continue;
-
-      const date = appt.time.toLocaleDateString("en-GB");
-      const timeStr = appt.time.toLocaleTimeString("en-GB", {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-      const dayName = daysArabic[appt.time.getDay()];
-
-      const serviceAr = serviceTranslations[appt.type] || appt.type;
-
-      try {
-        // Use structured path: sends IMAGE ONLY with Arabic caption
-        await sendWhatsAppMessage(
-          user.phone,
-          user.name,
-          date,
-          timeStr,
-          serviceAr,
-          dayName,
-          "ar"
-        );
-        console.log(`✅ Reminder sent to ${user.name}`);
-      } catch (err) {
-        console.error(`❌ Failed to send to ${user.name}:`, err);
+      // Skip Sundays
+      if (tomorrow.getDay() === 0) {
+        console.log("⏩ Skipping Sunday reminders");
+        return;
       }
-    }
-  });
+
+      const appointments = await Appointment.find({
+        time: { $gte: tomorrow, $lte: tomorrowEnd },
+      })
+        .populate<{ userId: IUser }>("userId")
+        .exec();
+
+      if (!appointments.length) {
+        console.log("No appointments for tomorrow.");
+        return;
+      }
+
+      const serviceTranslations: Record<AppointmentType, string> = {
+        [AppointmentType.Manicure]: "مانيكير",
+        [AppointmentType.Pedicure]: "بيديكير",
+        [AppointmentType.BothBasic]: "مانيكير و باديكير أساسي",
+        [AppointmentType.BothFull]: "مانيكير و باديكير كامل",
+        [AppointmentType.Eyebrows]: "حواجب",
+        [AppointmentType.Lashes]: "رموش",
+      };
+
+      for (const appt of appointments) {
+        const user = appt.userId;
+        if (!user?.phone) continue;
+
+        let date: string;
+        let timeStr: string;
+        let dayName: string;
+
+        if (!tzIsUTC) {
+          date = new Intl.DateTimeFormat("en-GB", { timeZone: tz }).format(appt.time);
+          timeStr = new Intl.DateTimeFormat("en-GB", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+            timeZone: tz,
+          }).format(appt.time);
+          dayName = new Intl.DateTimeFormat("ar-EG", { weekday: "long", timeZone: tz }).format(
+            appt.time
+          );
+        } else {
+          const f = formatWithOffset(appt.time, "ar");
+          date = f.dateStr;
+          timeStr = f.timeStr;
+          dayName = f.dayNameAr;
+        }
+
+        const serviceAr =
+          serviceTranslations[appt.type as AppointmentType] || String(appt.type);
+
+        try {
+          await sendWhatsAppMessage(
+            user.phone,
+            user.name,
+            date,
+            timeStr,
+            serviceAr,
+            dayName,
+            "ar"
+          );
+          console.log(`✅ Reminder sent to ${user.name}`);
+        } catch (err) {
+          console.error(`❌ Failed to send to ${user.name}:`, err);
+        }
+      }
+    },
+    { timezone: tz }
+  );
 }
 
