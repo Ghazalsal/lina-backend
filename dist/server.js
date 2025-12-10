@@ -109,7 +109,7 @@ app.post("/api/appointments/:id/send-whatsapp", asyncHandler(async (req, res) =>
         };
         service = serviceTranslations[appointment.type] || service;
     }
-    const sent = await sendWhatsAppMessage(user.phone, user.name, date, timeStr, service, dayName, lang);
+    const sent = await sendWhatsAppMessage(user.phone, user.name, date, appointment.time.toISOString(), service, dayName, lang);
     if (sent) {
         res.json({
             success: true,

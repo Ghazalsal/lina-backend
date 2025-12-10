@@ -137,7 +137,7 @@ app.post(
       user.phone,
       user.name,
       date,
-      timeStr,
+      appointment.time.toISOString(),
       service,
       dayName,
       lang
