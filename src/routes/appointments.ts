@@ -142,7 +142,7 @@ export function scheduleWhatsAppReminders() {
 
         const serviceAr =
           serviceTranslations[appt.type as AppointmentType] || String(appt.type);
-
+console.log({appt, TIME: timeStr })
         try {
           await sendWhatsAppMessage(
             user.phone,
