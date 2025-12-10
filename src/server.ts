@@ -7,7 +7,11 @@ import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import { createWriteStream } from "fs";
 
-import { Appointment, AppointmentType, ServiceDurations } from "./models/Appointment.js";
+import {
+  Appointment,
+  AppointmentType,
+  ServiceDurations,
+} from "./models/Appointment.js";
 import { IUser, User } from "./models/User.js";
 import { sendWhatsAppMessage } from "./utils/WhatsAppAPI.js";
 import { scheduleWhatsAppReminders } from "./routes/appointments.js";
@@ -54,7 +58,9 @@ app.use(
 // Request logger
 app.use((req: Request, _res: Response, next: NextFunction) => {
   console.log(
-    `\n--- NEW REQUEST ---\n${new Date().toISOString()} ${req.method} ${req.path}`
+    `\n--- NEW REQUEST ---\n${new Date().toISOString()} ${req.method} ${
+      req.path
+    }`
   );
   console.log("Headers:", req.headers);
   console.log("Body:", req.body);
@@ -70,13 +76,17 @@ app.post(
 
     const appointment = await Appointment.findById(id).populate("userId");
     if (!appointment) {
-      res.status(404).json({ success: false, message: "Appointment not found" });
+      res
+        .status(404)
+        .json({ success: false, message: "Appointment not found" });
       return;
     }
-
+    console.log({ appointmentBYBEE: appointment });
     const user = appointment.userId as IUser;
     if (!user?.phone) {
-      res.status(400).json({ success: false, message: "User has no phone number" });
+      res
+        .status(400)
+        .json({ success: false, message: "User has no phone number" });
       return;
     }
 
@@ -104,7 +114,9 @@ app.post(
         hour: "2-digit",
         minute: "2-digit",
       });
-      dayName = appointment.time.toLocaleDateString("en-US", { weekday: "long" });
+      dayName = appointment.time.toLocaleDateString("en-US", {
+        weekday: "long",
+      });
     }
 
     // Translate service type if needed
@@ -132,13 +144,17 @@ app.post(
     );
 
     if (sent) {
-      res.json({ success: true, message: "WhatsApp reminder sent successfully" });
+      res.json({
+        success: true,
+        message: "WhatsApp reminder sent successfully",
+      });
     } else {
-      res.status(500).json({ success: false, message: "Failed to send WhatsApp reminder" });
+      res
+        .status(500)
+        .json({ success: false, message: "Failed to send WhatsApp reminder" });
     }
   })
 );
-
 
 // Health check
 app.get("/", (_req, res) => {
@@ -147,7 +163,8 @@ app.get("/", (_req, res) => {
     status: "running",
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
-    database: mongoose.connection.readyState === 1 ? "connected" : "disconnected",
+    database:
+      mongoose.connection.readyState === 1 ? "connected" : "disconnected",
   });
 });
 console.log("MONGODB_URI:", process.env.MONGODB_URI);
@@ -159,14 +176,20 @@ if (!mongoUri) {
   process.exit(1);
 }
 
-mongoose.connection.on("connecting", () => console.log("🔄 Connecting to MongoDB..."));
+mongoose.connection.on("connecting", () =>
+  console.log("🔄 Connecting to MongoDB...")
+);
 mongoose.connection.on("connected", () => {
   console.log("✅ Connected to MongoDB");
   // Start daily WhatsApp reminder scheduler once DB is connected
   scheduleWhatsAppReminders();
 });
-mongoose.connection.on("error", (err) => console.error("❌ MongoDB connection error:", err));
-mongoose.connection.on("disconnected", () => console.log("⚠️ MongoDB disconnected"));
+mongoose.connection.on("error", (err) =>
+  console.error("❌ MongoDB connection error:", err)
+);
+mongoose.connection.on("disconnected", () =>
+  console.log("⚠️ MongoDB disconnected")
+);
 
 mongoose
   .connect(mongoUri, { connectTimeoutMS: 5000, socketTimeoutMS: 30000 })
@@ -190,11 +213,17 @@ app.post(
 
     const existing = await User.findOne({ phone: phone.trim() }).lean();
     if (existing) {
-      res.status(409).json({ error: "User with this phone already exists", user: existing });
+      res
+        .status(409)
+        .json({ error: "User with this phone already exists", user: existing });
       return;
     }
 
-    const user = new User({ name: name.trim(), phone: phone.trim(), appointments: [] });
+    const user = new User({
+      name: name.trim(),
+      phone: phone.trim(),
+      appointments: [],
+    });
     await user.save();
     res.status(201).json(user);
   })
@@ -251,7 +280,11 @@ app.delete(
     await Appointment.deleteMany({ userId: user._id });
     await User.findByIdAndDelete(user._id);
 
-    res.json({ success: true, message: "User and their appointments deleted", id });
+    res.json({
+      success: true,
+      message: "User and their appointments deleted",
+      id,
+    });
   })
 );
 
@@ -345,7 +378,10 @@ app.post(
     const saved = await appointment.save();
 
     // Track on user doc
-    await User.updateOne({ _id: userId }, { $addToSet: { appointments: saved._id } });
+    await User.updateOne(
+      { _id: userId },
+      { $addToSet: { appointments: saved._id } }
+    );
 
     res.status(201).json({
       id: saved._id,
@@ -414,7 +450,9 @@ app.put(
         return;
       }
       appointment.time = newTime;
-      appointment.endTime = new Date(newTime.getTime() + appointment.duration * 60000);
+      appointment.endTime = new Date(
+        newTime.getTime() + appointment.duration * 60000
+      );
     }
 
     if (notes !== undefined) appointment.notes = notes;
@@ -438,7 +476,9 @@ app.put(
       ? { id: newUser._id, name: newUser.name, phone: newUser.phone }
       : await (async () => {
           const u = await User.findById(updated.userId).lean();
-          return u ? { id: u._id, name: u.name, phone: u.phone } : { id: updated.userId };
+          return u
+            ? { id: u._id, name: u.name, phone: u.phone }
+            : { id: updated.userId };
         })();
 
     res.json({
@@ -471,7 +511,10 @@ app.delete(
     }
 
     // Pull from user's appointments array
-    await User.updateOne({ _id: deleted.userId }, { $pull: { appointments: deleted._id } });
+    await User.updateOne(
+      { _id: deleted.userId },
+      { $pull: { appointments: deleted._id } }
+    );
 
     res.json({ message: "Appointment deleted", id: deleted._id });
   })

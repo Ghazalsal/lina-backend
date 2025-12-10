@@ -1,6 +1,56 @@
 import dotenv from "dotenv";
 dotenv.config();
 
+function resolveTimezone(): string {
+  const candidates = [
+    process.env.DEFAULT_TIMEZONE,
+    "Asia/Gaza",
+    "Asia/Jerusalem",
+    "Europe/Athens",
+  ].filter(Boolean) as string[];
+  for (const tz of candidates) {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: tz }).format(new Date());
+      return tz;
+    } catch {}
+  }
+  return "UTC";
+}
+
+function getOffsetMinutes(): number {
+  const raw = (process.env.TZ_OFFSET_MINUTES || "").trim();
+  const n = Number(raw);
+  if (!isNaN(n) && isFinite(n)) return n;
+  return 120; // default UTC+2
+}
+
+function toPalestineTime(input: string): string {
+  // If input looks like an ISO date, convert; otherwise assume it is already formatted time.
+  const maybeDate = new Date(input);
+  if (!isNaN(maybeDate.getTime())) {
+    const tz = resolveTimezone();
+    if (tz !== "UTC") {
+      return new Intl.DateTimeFormat("en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+        timeZone: tz,
+      }).format(maybeDate);
+    }
+    // Fallback: manual offset
+    const offset = getOffsetMinutes();
+    const shifted = new Date(maybeDate.getTime() + offset * 60000);
+    const h = shifted.getUTCHours();
+    const m = shifted.getUTCMinutes();
+    const isPM = h >= 12;
+    const h12 = h % 12 || 12;
+    const mmStr = m.toString().padStart(2, "0");
+    return `${h12}:${mmStr} ${isPM ? "pm" : "am"}`;
+  }
+  // Already formatted string like "4:00 pm"; return as-is
+  return input;
+}
+
 // UltraMsg WhatsApp API configuration
 const ULTRAMSG_INSTANCE_ID = String(process.env.ULTRAMSG_INSTANCE_ID);
 const ULTRAMSG_TOKEN = process.env.ULTRAMSG_TOKEN;
@@ -67,7 +117,8 @@ export async function sendWhatsAppMessage(...args: any[]): Promise<boolean> {
       // Formatted reminder path -> send IMAGE ONLY with caption
       const clientName = args[1] as string;
       const date = args[2] as string; // not used in caption per request
-      const time = args[3] as string;
+      const rawTime = args[3] as string;
+      const time = toPalestineTime(rawTime);
       const service = args[4] as string;
       const day = (args[5] as string) || "";
       const lang = (args[6] as string) || "en";

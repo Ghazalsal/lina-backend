@@ -6,7 +6,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import { createWriteStream } from "fs";
-import { Appointment, AppointmentType, ServiceDurations } from "./models/Appointment.js";
+import { Appointment, AppointmentType, ServiceDurations, } from "./models/Appointment.js";
 import { User } from "./models/User.js";
 import { sendWhatsAppMessage } from "./utils/WhatsAppAPI.js";
 import { scheduleWhatsAppReminders } from "./routes/appointments.js";
@@ -54,12 +54,17 @@ app.post("/api/appointments/:id/send-whatsapp", asyncHandler(async (req, res) =>
     const { lang = "en" } = req.body; // Get language from request
     const appointment = await Appointment.findById(id).populate("userId");
     if (!appointment) {
-        res.status(404).json({ success: false, message: "Appointment not found" });
+        res
+            .status(404)
+            .json({ success: false, message: "Appointment not found" });
         return;
     }
+    console.log({ appointmentBYBEE: appointment });
     const user = appointment.userId;
     if (!user?.phone) {
-        res.status(400).json({ success: false, message: "User has no phone number" });
+        res
+            .status(400)
+            .json({ success: false, message: "User has no phone number" });
         return;
     }
     // Format date and time based on language
@@ -87,7 +92,9 @@ app.post("/api/appointments/:id/send-whatsapp", asyncHandler(async (req, res) =>
             hour: "2-digit",
             minute: "2-digit",
         });
-        dayName = appointment.time.toLocaleDateString("en-US", { weekday: "long" });
+        dayName = appointment.time.toLocaleDateString("en-US", {
+            weekday: "long",
+        });
     }
     // Translate service type if needed
     let service = appointment.type;
@@ -104,10 +111,15 @@ app.post("/api/appointments/:id/send-whatsapp", asyncHandler(async (req, res) =>
     }
     const sent = await sendWhatsAppMessage(user.phone, user.name, date, timeStr, service, dayName, lang);
     if (sent) {
-        res.json({ success: true, message: "WhatsApp reminder sent successfully" });
+        res.json({
+            success: true,
+            message: "WhatsApp reminder sent successfully",
+        });
     }
     else {
-        res.status(500).json({ success: false, message: "Failed to send WhatsApp reminder" });
+        res
+            .status(500)
+            .json({ success: false, message: "Failed to send WhatsApp reminder" });
     }
 }));
 // Health check
@@ -151,10 +163,16 @@ app.post("/api/users", asyncHandler(async (req, res) => {
     }
     const existing = await User.findOne({ phone: phone.trim() }).lean();
     if (existing) {
-        res.status(409).json({ error: "User with this phone already exists", user: existing });
+        res
+            .status(409)
+            .json({ error: "User with this phone already exists", user: existing });
         return;
     }
-    const user = new User({ name: name.trim(), phone: phone.trim(), appointments: [] });
+    const user = new User({
+        name: name.trim(),
+        phone: phone.trim(),
+        appointments: [],
+    });
     await user.save();
     res.status(201).json(user);
 }));
@@ -192,7 +210,11 @@ app.delete("/api/users/:id", asyncHandler(async (req, res) => {
     // delete all appointments for this user
     await Appointment.deleteMany({ userId: user._id });
     await User.findByIdAndDelete(user._id);
-    res.json({ success: true, message: "User and their appointments deleted", id });
+    res.json({
+        success: true,
+        message: "User and their appointments deleted",
+        id,
+    });
 }));
 // Get all users
 app.get("/api/users", asyncHandler(async (_req, res) => {
@@ -329,7 +351,9 @@ app.put("/api/appointments/:id", asyncHandler(async (req, res) => {
         ? { id: newUser._id, name: newUser.name, phone: newUser.phone }
         : await (async () => {
             const u = await User.findById(updated.userId).lean();
-            return u ? { id: u._id, name: u.name, phone: u.phone } : { id: updated.userId };
+            return u
+                ? { id: u._id, name: u.name, phone: u.phone }
+                : { id: updated.userId };
         })();
     res.json({
         id: updated._id,
