@@ -249,8 +249,22 @@ function toArabicTime(str: string): string {
   } else if (lower.includes("pm")) {
     suffix = "م";
   }
-  // strip any English am/pm
-  const base = trimmed.replace(/\s*(am|pm)\s*/i, "").replace(/\s*(ص|م)\s*/g, "").trim();
-  const arabicDigits = toArabicDigits(base);
+  // strip any English/Arabic am/pm markers
+  const baseNoMarker = trimmed
+    .replace(/\s*(am|pm)\s*/i, "")
+    .replace(/\s*(ص|م)\s*/g, "")
+    .trim();
+
+  // normalize 12-hour display: if hour is 00, treat as 12
+  let normalized = baseNoMarker;
+  const match = normalized.match(/^(\d{1,2}):(\d{2})$/);
+  if (match) {
+    let h = parseInt(match[1], 10);
+    const mm = match[2];
+    if (isNaN(h) || h === 0) h = 12; // 00 -> 12
+    normalized = `${String(h).padStart(2, "0")}:${mm}`;
+  }
+
+  const arabicDigits = toArabicDigits(normalized);
   return suffix ? `${arabicDigits} ${suffix}` : arabicDigits;
 }
