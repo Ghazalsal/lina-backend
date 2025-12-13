@@ -23,8 +23,11 @@ const AppointmentSchema = new Schema({
     endTime: { type: Date, required: true },
     duration: { type: Number, required: true },
     notes: { type: String, default: "" },
+    lastReminderSentAt: { type: Date, required: false },
+    lastReminderSentForDay: { type: String, required: false },
 }, { timestamps: true, versionKey: false });
 // Helpful indexes
 AppointmentSchema.index({ time: 1 });
 AppointmentSchema.index({ userId: 1, time: 1 });
+AppointmentSchema.index({ lastReminderSentForDay: 1, time: 1 });
 export const Appointment = mongoose.model("Appointment", AppointmentSchema);

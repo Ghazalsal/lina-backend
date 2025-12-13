@@ -62,6 +62,13 @@ function formatWithOffset(date: Date, lang: string) {
   return { dateStr, timeStr, dayNameAr };
 }
 
+function formatDayKey(date: Date): string {
+  const yyyy = date.getFullYear();
+  const mm = (date.getMonth() + 1).toString().padStart(2, "0");
+  const dd = date.getDate().toString().padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 export function scheduleWhatsAppReminders() {
   const tz = resolveTimezone();
   const tzIsUTC = tz === "UTC";
@@ -87,6 +94,7 @@ export function scheduleWhatsAppReminders() {
 
       const tomorrowEnd = new Date(tomorrow);
       tomorrowEnd.setHours(23, 59, 59, 999);
+      const targetDayKey = formatDayKey(tomorrow);
 
       // Skip Sundays
       if (tomorrow.getDay() === 0) {
@@ -96,6 +104,10 @@ export function scheduleWhatsAppReminders() {
 
       const appointments = await Appointment.find({
         time: { $gte: tomorrow, $lte: tomorrowEnd },
+        $or: [
+          { lastReminderSentForDay: { $exists: false } },
+          { lastReminderSentForDay: { $ne: targetDayKey } },
+        ],
       })
         .populate<{ userId: IUser }>("userId")
         .exec();
@@ -117,6 +129,23 @@ export function scheduleWhatsAppReminders() {
       for (const appt of appointments) {
         const user = appt.userId;
         if (!user?.phone) continue;
+
+        // Claim appointment atomically to prevent duplicate sends across processes
+        const claim = await Appointment.updateOne(
+          {
+            _id: appt._id,
+            $or: [
+              { lastReminderSentForDay: { $exists: false } },
+              { lastReminderSentForDay: { $ne: targetDayKey } },
+            ],
+          },
+          {
+            $set: { lastReminderSentForDay: targetDayKey, lastReminderSentAt: new Date() },
+          }
+        );
+        if (!claim.modifiedCount) {
+          continue;
+        }
 
         let date: string;
         let timeStr: string;
@@ -156,6 +185,11 @@ console.log({appt, TIME: timeStr })
           console.log(`✅ Reminder sent to ${user.name}`);
         } catch (err) {
           console.error(`❌ Failed to send to ${user.name}:`, err);
+          // Optionally release claim on failure so it can be retried manually
+          // await Appointment.updateOne(
+          //   { _id: appt._id, lastReminderSentForDay: targetDayKey },
+          //   { $unset: { lastReminderSentForDay: "", lastReminderSentAt: "" } }
+          // );
         }
       }
     },

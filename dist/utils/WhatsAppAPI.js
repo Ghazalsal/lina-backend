@@ -28,23 +28,30 @@ function toPalestineTime(input) {
     const maybeDate = new Date(input);
     if (!isNaN(maybeDate.getTime())) {
         const tz = resolveTimezone();
-        if (tz !== "UTC") {
-            return new Intl.DateTimeFormat("en-GB", {
-                hour: "2-digit",
-                minute: "2-digit",
-                hour12: true,
-                timeZone: tz,
-            }).format(maybeDate);
+        const fmtTZ = new Intl.DateTimeFormat("en-GB", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+            timeZone: tz,
+        }).format(maybeDate);
+        const fmtUTC = new Intl.DateTimeFormat("en-GB", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+            timeZone: "UTC",
+        }).format(maybeDate);
+        const forceOffset = String(process.env.FORCE_TZ_OFFSET || "").toLowerCase() === "true";
+        if (forceOffset || fmtTZ === fmtUTC || tz === "UTC") {
+            const offset = getOffsetMinutes();
+            const shifted = new Date(maybeDate.getTime() + offset * 60000);
+            const h = shifted.getUTCHours();
+            const m = shifted.getUTCMinutes();
+            const isPM = h >= 12;
+            const h12 = h % 12 || 12;
+            const mmStr = m.toString().padStart(2, "0");
+            return `${h12}:${mmStr} ${isPM ? "pm" : "am"}`;
         }
-        // Fallback: manual offset
-        const offset = getOffsetMinutes();
-        const shifted = new Date(maybeDate.getTime() + offset * 60000);
-        const h = shifted.getUTCHours();
-        const m = shifted.getUTCMinutes();
-        const isPM = h >= 12;
-        const h12 = h % 12 || 12;
-        const mmStr = m.toString().padStart(2, "0");
-        return `${h12}:${mmStr} ${isPM ? "pm" : "am"}`;
+        return fmtTZ;
     }
     // Already formatted string like "4:00 pm"; return as-is
     return input;
@@ -95,18 +102,19 @@ export async function sendWhatsAppMessage(...args) {
             const clientName = args[1];
             const date = args[2]; // not used in caption per request
             const rawTime = args[3];
-            const time = toPalestineTime(rawTime);
             const service = args[4];
             const day = args[5] || "";
             const lang = args[6] || "en";
+            const timeResolved = toPalestineTime(rawTime);
+            const timeForCaption = lang === "ar" ? toArabicTime(timeResolved) : timeResolved;
             if (!ULTRAMSG_IMAGE_URL) {
                 throw new Error("ULTRAMSG_IMAGE_URL missing in environment; set it to your logo/image URL.");
             }
             const caption = lang === "ar"
-                ? `مرحبا ${clientName}\nمنحب نذكركم بموعدكم ${service} يوم ${day}\nالساعة ${time}\n\nمنستناكم ❤️`
-                : `Hello ${clientName}\nReminder for your ${service} on ${day}\nat ${time}\n\nWe'll be waiting for you ❤️`;
+                ? `مرحبا ${clientName}\nمنحب نذكركم بموعدكم ${service} يوم ${day}\nالساعة ${timeForCaption}\n\nمنستناكم ❤️`
+                : `Hello ${clientName}\nReminder for your ${service} on ${day}\nat ${timeForCaption}\n\nWe'll be waiting for you ❤️`;
             const imageSent = await sendWhatsAppImage(args[0], ULTRAMSG_IMAGE_URL, caption);
-            return imageSent; // Do NOT send chat text for formatted reminders
+            return imageSent;
         }
         console.log("Sending WhatsApp message via UltraMsg to:", phone);
         // x-www-form-urlencoded payload (raw chat message only)
@@ -176,4 +184,46 @@ export async function sendWhatsAppImage(phoneNumber, imageUrl, caption) {
         console.error("🚨 Failed to send WhatsApp image via UltraMsg:", err);
         return false;
     }
+}
+// Convert Western digits to Arabic-Indic digits and AM/PM to Arabic markers
+function toArabicDigits(str) {
+    const map = {
+        "0": "٠", "1": "١", "2": "٢", "3": "٣", "4": "٤",
+        "5": "٥", "6": "٦", "7": "٧", "8": "٨", "9": "٩",
+    };
+    return str.replace(/[0-9]/g, (d) => map[d] || d);
+}
+function toArabicTime(str) {
+    const trimmed = str.trim();
+    const lower = trimmed.toLowerCase();
+    let suffix = "";
+    if (/[\u0635]/.test(trimmed) || /\bص\b/.test(trimmed)) {
+        suffix = "ص"; // already Arabic AM
+    }
+    else if (/[\u0645]/.test(trimmed) || /\bم\b/.test(trimmed)) {
+        suffix = "م"; // already Arabic PM
+    }
+    else if (lower.includes("am")) {
+        suffix = "ص";
+    }
+    else if (lower.includes("pm")) {
+        suffix = "م";
+    }
+    // strip any English/Arabic am/pm markers
+    const baseNoMarker = trimmed
+        .replace(/\s*(am|pm)\s*/i, "")
+        .replace(/\s*(ص|م)\s*/g, "")
+        .trim();
+    // normalize 12-hour display: if hour is 00, treat as 12
+    let normalized = baseNoMarker;
+    const match = normalized.match(/^(\d{1,2}):(\d{2})$/);
+    if (match) {
+        let h = parseInt(match[1], 10);
+        const mm = match[2];
+        if (isNaN(h) || h === 0)
+            h = 12; // 00 -> 12
+        normalized = `${String(h).padStart(2, "0")}:${mm}`;
+    }
+    const arabicDigits = toArabicDigits(normalized);
+    return suffix ? `${arabicDigits} ${suffix}` : arabicDigits;
 }
