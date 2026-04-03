@@ -1,4 +1,4 @@
-import mongoose, { Schema } from "mongoose";
+import { JsonDB } from "../utils/JsonDB.js";
 export var AppointmentType;
 (function (AppointmentType) {
     AppointmentType["Manicure"] = "MANICURE";
@@ -16,18 +16,4 @@ export const ServiceDurations = {
     [AppointmentType.Eyebrows]: 30,
     [AppointmentType.Lashes]: 120,
 };
-const AppointmentSchema = new Schema({
-    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    type: { type: String, enum: Object.values(AppointmentType), required: true },
-    time: { type: Date, required: true },
-    endTime: { type: Date, required: true },
-    duration: { type: Number, required: true },
-    notes: { type: String, default: "" },
-    lastReminderSentAt: { type: Date, required: false },
-    lastReminderSentForDay: { type: String, required: false },
-}, { timestamps: true, versionKey: false });
-// Helpful indexes
-AppointmentSchema.index({ time: 1 });
-AppointmentSchema.index({ userId: 1, time: 1 });
-AppointmentSchema.index({ lastReminderSentForDay: 1, time: 1 });
-export const Appointment = mongoose.model("Appointment", AppointmentSchema);
+export const appointmentsDB = new JsonDB("appointments.json");

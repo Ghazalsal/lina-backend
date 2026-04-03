@@ -2,9 +2,11 @@ version: '3.8'
 services:
   backend:
     build: .
-    image: linabackend
+    image: lina-backend-2.0
     ports:
       - "4002:4002"
     env_file:
       - .env
+    volumes:
+      - ./data:/app/data
     restart: unless-stopped

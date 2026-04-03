@@ -1,21 +1,12 @@
-import mongoose, { Schema, Document, Types } from "mongoose";
+import { JsonDB } from "../utils/JsonDB.js";
 
-export interface IUser extends Document {
-  _id: Types.ObjectId;
+export interface User {
+  id: string;
   name: string;
   phone: string;
-  appointments: Types.ObjectId[];
+  appointments: string[]; // List of appointment IDs
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-const UserSchema: Schema<IUser> = new Schema(
-  {
-    name: { type: String, required: true, trim: true },
-    phone: { type: String, required: true, unique: true, trim: true },
-    appointments: [{ type: Schema.Types.ObjectId, ref: "Appointment" }],
-  },
-  { timestamps: true, versionKey: false }
-);
-
-UserSchema.index({ phone: 1 }, { unique: true });
-
-export const User = mongoose.model<IUser>("User", UserSchema);
+export const usersDB = new JsonDB<User>("users.json");

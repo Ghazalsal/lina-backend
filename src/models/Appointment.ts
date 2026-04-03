@@ -1,5 +1,4 @@
-import mongoose, { Schema, Document, Types } from "mongoose";
-import type { IUser } from "./User.js";
+import { JsonDB } from "../utils/JsonDB.js";
 
 export enum AppointmentType {
   Manicure = "MANICURE",
@@ -19,35 +18,18 @@ export const ServiceDurations: Record<AppointmentType, number> = {
   [AppointmentType.Lashes]: 120,
 };
 
-export interface IAppointment extends Document {
-  _id: Types.ObjectId;
-  userId: IUser | Types.ObjectId; // populated or ObjectId
+export interface Appointment {
+  id: string;
+  userId: string;
   type: AppointmentType;
-  time: Date;
-  endTime: Date;
+  time: string; // ISO String
+  endTime: string; // ISO String
   duration: number;
   notes?: string;
-  lastReminderSentAt?: Date;
+  lastReminderSentAt?: string;
   lastReminderSentForDay?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-const AppointmentSchema: Schema<IAppointment> = new Schema(
-  {
-    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    type: { type: String, enum: Object.values(AppointmentType), required: true },
-    time: { type: Date, required: true },
-    endTime: { type: Date, required: true },
-    duration: { type: Number, required: true },
-    notes: { type: String, default: "" },
-    lastReminderSentAt: { type: Date, required: false },
-    lastReminderSentForDay: { type: String, required: false },
-  },
-  { timestamps: true, versionKey: false }
-);
-
-// Helpful indexes
-AppointmentSchema.index({ time: 1 });
-AppointmentSchema.index({ userId: 1, time: 1 });
-AppointmentSchema.index({ lastReminderSentForDay: 1, time: 1 });
-
-export const Appointment = mongoose.model<IAppointment>("Appointment", AppointmentSchema);
+export const appointmentsDB = new JsonDB<Appointment>("appointments.json");
