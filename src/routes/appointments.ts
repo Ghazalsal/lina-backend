@@ -42,7 +42,7 @@ function formatDayKey(date: Date): string {
 
 export function scheduleWhatsAppReminders() {
   const tz = resolveTimezone();
-  const localTargetHour = 20; // 8 PM
+  const localTargetHour = 17; // 5 PM
   const cronExpr = `0 ${localTargetHour} * * *`;
 
   console.log("⚙️ Reminder scheduler config:", { timezone: tz, cronExpr });

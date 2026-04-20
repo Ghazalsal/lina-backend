@@ -29,18 +29,20 @@ function toPalestineTime(input: string): string {
   const maybeDate = new Date(input);
   if (!isNaN(maybeDate.getTime())) {
     const tz = resolveTimezone();
-    const fmtTZ = new Intl.DateTimeFormat("en-GB", {
-      hour: "2-digit",
+    // Use en-US for reliable 12-hour formatting (12:00 pm instead of 00:00)
+    const fmtTZ = new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
       minute: "2-digit",
       hour12: true,
       timeZone: tz,
-    }).format(maybeDate);
-    const fmtUTC = new Intl.DateTimeFormat("en-GB", {
-      hour: "2-digit",
+    }).format(maybeDate).toLowerCase();
+
+    const fmtUTC = new Intl.DateTimeFormat("en-US", {
+      hour: "numeric",
       minute: "2-digit",
       hour12: true,
       timeZone: "UTC",
-    }).format(maybeDate);
+    }).format(maybeDate).toLowerCase();
 
     const forceOffset = String(process.env.FORCE_TZ_OFFSET || "").toLowerCase() === "true";
     if (forceOffset || fmtTZ === fmtUTC || tz === "UTC") {
