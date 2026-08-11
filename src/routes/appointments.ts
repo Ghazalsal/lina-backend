@@ -41,6 +41,8 @@ function formatDayKey(date: Date): string {
 }
 
 export function scheduleWhatsAppReminders() {
+  return; // TEMPORARILY DISABLED - automatic reminders are off for now
+  /*
   const tz = resolveTimezone();
   const localTargetHour = 17; // 5 PM
   const cronExpr = `0 ${localTargetHour} * * *`;
@@ -107,4 +109,5 @@ export function scheduleWhatsAppReminders() {
       }
     }
   }, { timezone: tz });
+  */
 }
