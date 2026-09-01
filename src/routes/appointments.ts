@@ -41,73 +41,19 @@ function formatDayKey(date: Date): string {
 }
 
 export function scheduleWhatsAppReminders() {
-  return; // TEMPORARILY DISABLED - automatic reminders are off for now
-  /*
   const tz = resolveTimezone();
-  const localTargetHour = 17; // 5 PM
+  const localTargetHour = 17;
   const cronExpr = `0 ${localTargetHour} * * *`;
 
   console.log("⚙️ Reminder scheduler config:", { timezone: tz, cronExpr });
 
-  cron.schedule(cronExpr, async () => {
-    console.log("🕗 Running WhatsApp reminder scheduler...");
+  cron.schedule(
+    cronExpr,
+    async () => {
+      console.log("🕗 Running SMS reminder scheduler...");
 
-    const now = new Date();
-    const tomorrow = new Date(now);
-    tomorrow.setDate(now.getDate() + 1);
-    tomorrow.setHours(0, 0, 0, 0);
-
-    const tomorrowEnd = new Date(tomorrow);
-    tomorrowEnd.setHours(23, 59, 59, 999);
-    const targetDayKey = formatDayKey(tomorrow);
-
-    if (tomorrow.getDay() === 0) return; // Skip Sunday
-
-    const appointments = await appointmentsDB.find(appt => {
-      const apptTime = new Date(appt.time);
-      return apptTime >= tomorrow && apptTime <= tomorrowEnd && appt.lastReminderSentForDay !== targetDayKey;
-    });
-
-    if (!appointments.length) {
-      console.log("No appointments for tomorrow.");
-      return;
-    }
-
-    const serviceTranslations: Record<string, string> = {
-      [AppointmentType.Manicure]: "مانيكير",
-      [AppointmentType.Pedicure]: "بيديكير",
-      [AppointmentType.BothBasic]: "مانيكير و باديكير أساسي",
-      [AppointmentType.BothFull]: "مانيكير و باديكير كامل",
-      [AppointmentType.Eyebrows]: "حواجب",
-      [AppointmentType.Lashes]: "رموش",
-    };
-
-    for (const appt of appointments) {
-      const user = await usersDB.getById(appt.userId);
-      if (!user?.phone) continue;
-
-      const f = formatWithOffset(new Date(appt.time));
-      const serviceAr = serviceTranslations[appt.type] || appt.type;
-
-      try {
-        await sendWhatsAppMessage(
-          user.phone,
-          user.name,
-          f.dateStr,
-          appt.time,
-          serviceAr,
-          f.dayNameAr,
-          "ar"
-        );
-        await appointmentsDB.update(appt.id, {
-          lastReminderSentForDay: targetDayKey,
-          lastReminderSentAt: new Date().toISOString()
-        });
-        console.log(`✅ Reminder sent to ${user.name}`);
-      } catch (err) {
-        console.error(`❌ Failed to send to ${user.name}:`, err);
-      }
-    }
-  }, { timezone: tz });
-  */
+      // existing code...
+    },
+    { timezone: tz }
+  );
 }

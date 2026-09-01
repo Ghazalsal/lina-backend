@@ -67,20 +67,23 @@ function toArabicTime(timeStr: string): string {
     .replace(/pm/gi, "مساءً");
 }
 
-const ULTRAMSG_INSTANCE_ID = String(process.env.ULTRAMSG_INSTANCE_ID);
-const ULTRAMSG_TOKEN = process.env.ULTRAMSG_TOKEN;
-const ULTRAMSG_MESSAGES_URL = `https://api.ultramsg.com/instance${ULTRAMSG_INSTANCE_ID}/messages/chat`;
-const DEFAULT_COUNTRY_CODE = (process.env.DEFAULT_COUNTRY_CODE || "970").replace(/[^\d]/g, "");
-const ULTRAMSG_IMAGE_URL = process.env.ULTRAMSG_IMAGE_URL || "";
-
+const HTD_SMS_ID=process.env.HTD_SMS_ID;
+const HTD_SMS_SENDER="Lina Nails";
+const HTD_SMS_URL="https://sms.htd.ps/API/SendSMS.aspx";
 function cleanPhone(phone: string): string {
-  let raw = phone.trim();
-  let digits = raw.replace(/[^\d]/g, "");
+  let digits = phone.replace(/[^\d]/g, "");
+
   if (!digits) return "";
-  if (raw.startsWith("+")) return "+" + digits;
-  if (digits.startsWith(DEFAULT_COUNTRY_CODE) || digits.startsWith("1")) return "+" + digits;
-  if (digits.startsWith("0")) return "+" + DEFAULT_COUNTRY_CODE + digits.slice(1);
-  return "+" + DEFAULT_COUNTRY_CODE + digits;
+
+  if (digits.startsWith("0")) {
+    digits = digits.slice(1);
+  }
+
+  if (!digits.startsWith("972")) {
+    digits = `972${digits}`;
+  }
+
+  return digits;
 }
 
 export async function sendWhatsAppMessage(
@@ -93,76 +96,57 @@ export async function sendWhatsAppMessage(
   lang: string = "en"
 ): Promise<boolean> {
   try {
-    if (!ULTRAMSG_TOKEN || !ULTRAMSG_INSTANCE_ID) {
-      console.error("UltraMsg credentials missing.");
+    if (!HTD_SMS_ID) {
+      console.error("HTD SMS ID missing.");
       return false;
     }
 
     const phone = cleanPhone(phoneNumber);
-    if (!phone || phone.length < 11 || !phone.startsWith("+")) {
-      throw new Error("Invalid phone number format.");
+
+    if (!phone) {
+      console.error("Invalid phone number:", phoneNumber);
+      return false;
     }
 
     let text: string;
 
     if (!date) {
-      // Raw text message path
       text = clientNameOrMessage;
     } else {
-      // Formatted reminder path
       const timeResolved = toPalestineTime(time!);
-      const timeForCaption = lang === "ar" ? toArabicTime(timeResolved) : timeResolved;
+      const timeForMessage =
+        lang === "ar" ? toArabicTime(timeResolved) : timeResolved;
 
-      if (!ULTRAMSG_IMAGE_URL) {
-        throw new Error("ULTRAMSG_IMAGE_URL missing.");
-      }
-
-      const caption =
+      text =
         lang === "ar"
-          ? `مرحبا ${clientNameOrMessage}\nمنحب نذكرك بموعدك ${service} يوم ${day}\nالساعة ${timeForCaption}\n\nمنستناكي ❤️`
-          : `Hello ${clientNameOrMessage}\nReminder for your ${service} on ${day}\nat ${timeForCaption}\n\nWe'll be waiting for you ❤️`;
-
-      return await sendWhatsAppImage(phone, ULTRAMSG_IMAGE_URL, caption);
+          ? `مرحبا ${clientNameOrMessage}، منحب نذكرك بموعدك ${service} يوم ${day} الساعة ${timeForMessage}. منستناكي ❤️`
+          : `Hello ${clientNameOrMessage}, reminder for your ${service} on ${day} at ${timeForMessage}. We'll be waiting for you ❤️`;
     }
 
-    const params = new URLSearchParams({ token: ULTRAMSG_TOKEN, to: phone, body: text });
-    const response = await fetch(ULTRAMSG_MESSAGES_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: params.toString(),
-    });
+    // Keep SMS within 70 characters/words as required by your provider
+    if (text.length > 70) {
+      console.warn(`SMS is ${text.length} characters.`);
+    }
 
-    return response.ok;
-  } catch (err) {
-    console.error("🚨 Failed to send WhatsApp message:", err);
-    return false;
-  }
-}
-
-export async function sendWhatsAppImage(
-  phoneNumber: string,
-  imageUrl: string,
-  caption?: string
-): Promise<boolean> {
-  try {
-    const phone = cleanPhone(phoneNumber);
-    const url = `https://api.ultramsg.com/instance${ULTRAMSG_INSTANCE_ID}/messages/image`;
     const params = new URLSearchParams({
-      token: ULTRAMSG_TOKEN!,
+      id: HTD_SMS_ID,
+      sender: HTD_SMS_SENDER,
       to: phone,
-      image: imageUrl,
-      caption: caption || "",
+      msg: text,
     });
 
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: params.toString(),
-    });
+    const response = await fetch(
+      `${HTD_SMS_URL}?${params.toString()}`
+    );
+
+    const result = await response.text();
+
+    console.log("HTD SMS response:", result);
 
     return response.ok;
   } catch (err) {
-    console.error("🚨 Failed to send WhatsApp image:", err);
+    console.error("🚨 Failed to send SMS:", err);
     return false;
   }
 }
+
