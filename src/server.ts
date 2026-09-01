@@ -251,6 +251,24 @@ app.get("/api/appointments", asyncHandler(async (req: Request, res: Response) =>
   res.json(formatted.sort((a, b) => a.time.localeCompare(b.time)));
 }));
 
+// Generic SMS endpoint (no CORS issues from frontend)
+app.post("/api/send-sms", asyncHandler(async (req: Request, res: Response) => {
+  const { phoneNumber, message } = req.body;
+
+  if (!phoneNumber?.trim() || !message?.trim()) {
+    res.status(400).json({ success: false, error: "Phone number and message are required" });
+    return;
+  }
+
+  const sent = await sendWhatsAppMessage(phoneNumber, message);
+
+  if (sent) {
+    res.json({ success: true, message: "SMS sent successfully" });
+  } else {
+    res.status(500).json({ success: false, error: "Failed to send SMS" });
+  }
+}));
+
 // Send WhatsApp reminder manually
 app.post("/api/appointments/:id/send-whatsapp", asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
