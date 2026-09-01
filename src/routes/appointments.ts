@@ -18,9 +18,9 @@ function isSameDayInTimezone(date: Date, targetDate: Date, tz: string): boolean 
 
 export function scheduleWhatsAppReminders() {
   const tz = resolveTimezone();
-  const cronExpr = "30 18 * * *";
+  const cronExpr = "0 17 * * *";
 
-  console.log("⚙️ Reminder scheduler config:", { timezone: tz, cronExpr, time: "6:30 pm" });
+  console.log("⚙️ Reminder scheduler config:", { timezone: tz, cronExpr, time: "5:00 pm" });
 
   cron.schedule(
     cronExpr,

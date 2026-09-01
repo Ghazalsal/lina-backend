@@ -73,8 +73,8 @@ export function scheduleWhatsAppReminders() {
   const tz = resolveTimezone();
   const tzIsUTC = tz === "UTC";
 
-  // Compute the cron hour: if timezone unavailable (UTC), convert local 20:00 to UTC hour using offset
-  const localTargetHour = 20; // 8 PM local target
+  // Compute the cron hour: if timezone unavailable (UTC), convert local 17:00 to UTC hour using offset
+  const localTargetHour = 17; // 5 PM local target
   const offsetHours = Math.floor(getOffsetMinutes() / 60);
   const cronHour = tzIsUTC ? ((localTargetHour - offsetHours + 24) % 24) : localTargetHour;
   const cronExpr = `0 ${cronHour} * * *`;

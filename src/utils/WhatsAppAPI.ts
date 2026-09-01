@@ -128,8 +128,8 @@ console.log("Resolved time:", timeResolved, "Message time:", timeForMessage);
 console.log("this is test", HTD_SMS_URL, HTD_SMS_ID, HTD_SMS_SENDER, phone, clientNameOrMessage, service, date, timeForMessage);
       text =
         lang === "ar"
-         ? `مرحباً ${clientNameOrMessage}\n${date} - ${time}\nLina Pure Nails 💅`
-         : `Hello ${clientNameOrMessage} 👋\nAppointment:${date} - ${time}\nLina Pure Nails 💅`;
+         ? `مرحبا ${clientNameOrMessage}، موعدك ${date} الساعة ${timeForMessage}`
+         : `Hello ${clientNameOrMessage} 👋\nYour Appointment:${date} - ${timeForMessage}\n`;
     }
 
     // Keep SMS within 70 characters/words as required by your provider
