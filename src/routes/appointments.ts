@@ -7,52 +7,95 @@ function resolveTimezone(): string {
   return process.env.DEFAULT_TIMEZONE || "Asia/Gaza";
 }
 
-function getOffsetMinutes(): number {
-  return Number(process.env.TZ_OFFSET_MINUTES) || 120;
+function formatDayKey(date: Date, tz: string): string {
+  const formatted = date.toLocaleDateString("en-CA", { timeZone: tz });
+  return formatted;
 }
 
-function formatWithOffset(date: Date) {
-  const offset = getOffsetMinutes();
-  const shifted = new Date(date.getTime() + offset * 60000);
-  const h = shifted.getUTCHours();
-  const m = shifted.getUTCMinutes();
-  const dd = shifted.getUTCDate();
-  const mm = shifted.getUTCMonth() + 1;
-  const yyyy = shifted.getUTCFullYear();
-  const weekdayIdx = shifted.getUTCDay();
-
-  const isPM = h >= 12;
-  const h12 = h % 12 || 12;
-  const mmStr = m.toString().padStart(2, "0");
-  const timeStr = `${h12}:${mmStr} ${isPM ? "pm" : "am"}`;
-  const dateStr = `${dd.toString().padStart(2, "0")}/${mm.toString().padStart(2, "0")}/${yyyy}`;
-
-  const daysArabic = ["الأحد", "الإثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
-  const dayNameAr = daysArabic[weekdayIdx];
-
-  return { dateStr, timeStr, dayNameAr };
-}
-
-function formatDayKey(date: Date): string {
-  const yyyy = date.getFullYear();
-  const mm = (date.getMonth() + 1).toString().padStart(2, "0");
-  const dd = date.getDate().toString().padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
+function isSameDayInTimezone(date: Date, targetDate: Date, tz: string): boolean {
+  return date.toLocaleDateString("en-CA", { timeZone: tz }) === targetDate.toLocaleDateString("en-CA", { timeZone: tz });
 }
 
 export function scheduleWhatsAppReminders() {
   const tz = resolveTimezone();
-  const localTargetHour = 17;
-  const cronExpr = `0 ${localTargetHour} * * *`;
+  const cronExpr = "30 18 * * *";
 
-  console.log("⚙️ Reminder scheduler config:", { timezone: tz, cronExpr });
+  console.log("⚙️ Reminder scheduler config:", { timezone: tz, cronExpr, time: "6:30 pm" });
 
   cron.schedule(
     cronExpr,
     async () => {
-      console.log("🕗 Running SMS reminder scheduler...");
+      console.log("🕗 Running WhatsApp reminder scheduler...", { timezone: tz });
 
-      // existing code...
+      const now = new Date();
+      const tomorrow = new Date(now);
+      tomorrow.setDate(now.getDate() + 1);
+      tomorrow.setHours(0, 0, 0, 0);
+
+      const targetDayKey = formatDayKey(tomorrow, tz);
+      const allAppointments = await appointmentsDB.getAll();
+
+      const appointments = allAppointments.filter((appt) => {
+        const apptDate = new Date(appt.time);
+        const sameDay = isSameDayInTimezone(apptDate, tomorrow, tz);
+        const notSentForDay = !appt.lastReminderSentForDay || appt.lastReminderSentForDay !== targetDayKey;
+        return sameDay && notSentForDay;
+      });
+
+      if (!appointments.length) {
+        console.log("No appointments for tomorrow’s reminder window.");
+        return;
+      }
+
+      const serviceTranslations: Record<string, string> = {
+        [AppointmentType.Manicure]: "مانيكير",
+        [AppointmentType.Pedicure]: "بيديكير",
+        [AppointmentType.BothBasic]: "مانيكير و باديكير أساسي",
+        [AppointmentType.BothFull]: "مانيكير و باديكير كامل",
+        [AppointmentType.Eyebrows]: "حواجب",
+        [AppointmentType.Lashes]: "رموش",
+      };
+
+      for (const appt of appointments) {
+        const user = await usersDB.getById(appt.userId);
+        if (!user?.phone) continue;
+
+        try {
+          const dateObj = new Date(appt.time);
+          const dateStr = dateObj.toLocaleDateString("en-GB", { timeZone: tz });
+          const timeStr = dateObj.toLocaleTimeString("en-GB", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+            timeZone: tz,
+          });
+          const dayName = dateObj.toLocaleDateString("ar-EG", { weekday: "long", timeZone: tz });
+          const service = serviceTranslations[appt.type] || appt.type;
+
+          await appointmentsDB.update(appt.id, {
+            lastReminderSentForDay: targetDayKey,
+            lastReminderSentAt: new Date().toISOString(),
+          });
+
+          const sent = await sendWhatsAppMessage(
+            user.phone,
+            user.name,
+            dateStr,
+            timeStr,
+            service,
+            dayName,
+            "ar"
+          );
+
+          if (sent) {
+            console.log(`✅ Reminder sent to ${user.name}`);
+          } else {
+            console.warn(`⚠️ Reminder failed for ${user.name}`);
+          }
+        } catch (error) {
+          console.error(`❌ Failed to send reminder to ${user.name}:`, error);
+        }
+      }
     },
     { timezone: tz }
   );

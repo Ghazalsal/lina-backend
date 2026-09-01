@@ -5,7 +5,7 @@ import asyncHandler from "express-async-handler";
 import { usersDB } from "./models/User.js";
 import { appointmentsDB, AppointmentType, ServiceDurations } from "./models/Appointment.js";
 import { sendWhatsAppMessage } from "./utils/WhatsAppAPI.js";
-// import { scheduleWhatsAppReminders } from "./routes/appointments.js";
+import { scheduleWhatsAppReminders } from "./routes/appointments.js";
 
 dotenv.config();
 
@@ -343,6 +343,8 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
     timestamp: new Date().toISOString()
   });
 });
+
+scheduleWhatsAppReminders();
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
