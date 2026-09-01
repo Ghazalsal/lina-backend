@@ -69,7 +69,7 @@ function toArabicTime(timeStr: string): string {
 
 const HTD_SMS_ID=process.env.HTD_SMS_ID;
 const HTD_SMS_SENDER="Lina Nails";
-const HTD_SMS_URL="https://sms.htd.ps/API/SendSMS.aspx";
+const HTD_SMS_URL=process.env.HTD_SMS_URL;
 function cleanPhone(phone: string): string {
   let digits = phone.replace(/[^\d]/g, "");
 
@@ -100,6 +100,14 @@ export async function sendWhatsAppMessage(
       console.error("HTD SMS ID missing.");
       return false;
     }
+    if(!HTD_SMS_URL){
+      console.error("HTD SMS URL missing.");
+      return false;
+    }
+    if(!HTD_SMS_SENDER){
+      console.error("HTD SMS Sender missing.");
+      return false;
+    }
 
     const phone = cleanPhone(phoneNumber);
 
@@ -120,8 +128,8 @@ console.log("Resolved time:", timeResolved, "Message time:", timeForMessage);
 console.log("this is test", HTD_SMS_URL, HTD_SMS_ID, HTD_SMS_SENDER, phone, clientNameOrMessage, service, date, timeForMessage);
       text =
         lang === "ar"
-         ? `مرحباً ${clientNameOrMessage}\n${service}\n${date} - ${time}\nLina Pure Nails 💅`
-         : `Hello ${clientNameOrMessage} 👋\nAppointment: ${service}\n${date} - ${time}\nLina Pure Nails 💅`;
+         ? `مرحباً ${clientNameOrMessage}\n${date} - ${time}\nLina Pure Nails 💅`
+         : `Hello ${clientNameOrMessage} 👋\nAppointment:${date} - ${time}\nLina Pure Nails 💅`;
     }
 
     // Keep SMS within 70 characters/words as required by your provider
