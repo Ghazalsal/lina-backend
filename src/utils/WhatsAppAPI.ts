@@ -116,11 +116,12 @@ export async function sendWhatsAppMessage(
       const timeResolved = toPalestineTime(time!);
       const timeForMessage =
         lang === "ar" ? toArabicTime(timeResolved) : timeResolved;
-
+console.log("Resolved time:", timeResolved, "Message time:", timeForMessage);
+console.log("this is test", HTD_SMS_URL, HTD_SMS_ID, HTD_SMS_SENDER, phone, clientNameOrMessage, service, date, timeForMessage);
       text =
         lang === "ar"
-          ? `مرحبا ${clientNameOrMessage}، منحب نذكرك بموعدك ${service} يوم ${day} الساعة ${timeForMessage}. منستناكي ❤️`
-          : `Hello ${clientNameOrMessage}, reminder for your ${service} on ${day} at ${timeForMessage}. We'll be waiting for you ❤️`;
+         ? `مرحباً ${clientNameOrMessage}\n${service}\n${date} - ${time}\nLina Pure Nails 💅`
+         : `Hello ${clientNameOrMessage} 👋\nAppointment: ${service}\n${date} - ${time}\nLina Pure Nails 💅`;
     }
 
     // Keep SMS within 70 characters/words as required by your provider
